@@ -9,6 +9,7 @@ import Data.List
 import System.IO
 
 flagMask_Z = 0x01
+flagMask_INVERSEZ = 0xfe
 
 type PCState = StateT MyState IO ()
 
@@ -17,9 +18,17 @@ data Registers = Registers {areg :: Int, breg :: Int, creg :: Int, dreg :: Int, 
 instance Show Registers where
     show rs = "(REGISTERS: a = " ++ showHex (areg rs) ++ " f = " ++ showHex (freg rs) ++ " )"
 
+data IORegisters = IORegisters {ioControlA :: Int, ioValueA :: Int , ioControlB :: Int, ioValueB :: Int}
+instance Show IORegisters where
+    show iors = "(IOREGISTERS: ioControlA = "   ++ showHex (ioControlA iors) ++ ", "
+                                                ++ "ioValueA = " ++ showHex (ioValueA iors) ++ ", "
+                                                ++ "ioControlA = " ++ showHex (ioControlB iors) ++ ", "
+                                                ++ "ioValueB = " ++ showHex (ioValueB iors) ++ ")"
+
+
 data ProgramData = ProgramData {ins :: [(Int, PCState)], lab :: [(String, Int)]}
         
-data MyState = MyState { canContinue :: Bool, programData :: ProgramData, pc  :: Int, registers :: Registers, ioControlA :: Int, ioAValue :: Int , ioControlB :: Int, ioBValue :: Int, e :: String }
+data MyState = MyState { canContinue :: Bool, programData :: ProgramData, pc  :: Int, registers :: Registers, ioRegisters :: IORegisters, e :: String }
 
 data AnnotatedPCState = Label String (Int, PCState) | Unlabled (Int, PCState)
 
@@ -28,6 +37,7 @@ data Address = LabelValue String | NumberValue Int deriving Show
 runMachine :: [AnnotatedPCState] -> IO ()
 runMachine instructions  = let
             initRegisters = Registers {areg = 0, breg = 0, creg = 0, dreg = 0, ereg = 0, freg = 0, hreg = 0, regl = 0}
+            initIORegisters = IORegisters {ioControlA = 0, ioValueA = 0, ioControlB = 0, ioValueB = 0}
 
             seed :: [AnnotatedPCState] -> Int -> [(Int, PCState)] -> [(String, Int)] -> ([(Int, PCState)], [(String, Int)])
             seed [] addr acc labelAcc  = (acc, labelAcc)
@@ -37,7 +47,7 @@ runMachine instructions  = let
             (instructions', labels) = seed instructions 0 [] []
 
 
-            initState = MyState True (ProgramData instructions' labels) 0 initRegisters 0 0 0 0 ""
+            initState = MyState True (ProgramData instructions' labels) 0 initRegisters initIORegisters ""
 
         in do
             putStrLn $ show labels
@@ -47,7 +57,7 @@ runMachine instructions  = let
 
 runMe :: PCState
 runMe = do
-    MyState _ instructions pc a ioCA ioVA ioCB ioVB e <- get
+    MyState _ instructions pc regs ioRegs e <- get
     let nextInstruction' = lookup pc (ins instructions)
     case nextInstruction' of
         Nothing -> return ()
@@ -96,43 +106,51 @@ JP LOOP1;
         
     let pr1 = [halt]
 
+    let prt1 = [
+            Unlabled $ ldA 0x34,
+            Unlabled $ cpA 0x34,
+            Unlabled $ cpA 0x88,
+            Unlabled $ jpNZ (NumberValue 0x00),
+            Unlabled $ halt
+            ]
+
     let pr2 = [
 
-                Label "START" $     ldA 0x4F,                   -- 0000
-                Unlabled $          outA 0x02,                  -- 0002
+                Label "START" $     ldA 0x4F,
+                Unlabled $          outA 0x02,
 
-                Unlabled $          ldA 0x0F,                   -- 0004
-                Unlabled $          outA 0x03,                  -- 0006
-                Label "LOOP1" $     inA 0x00,                   -- 0008
-                Unlabled $          outA 0x01,                  -- 000a
+                Unlabled $          ldA 0x0F,
+                Unlabled $          outA 0x03,
+                Label "LOOP1" $     inA 0x00,
+                Unlabled $          outA 0x01,
 
-                Unlabled $          jp $ LabelValue "LOOP1",    -- 000c
+                Unlabled $          cpA 0x00,
 
-                Label "END" $ halt                              -- 000f
+                Unlabled $          jpNZ $ LabelValue "LOOP1",
+
+                Unlabled $ nop,
+                Label "END" $ halt
                 ]
     runMachine pr2
 
 instance Show MyState where
-    show (MyState cont i pc regs ioCA ioVA ioCB ioVB e) = concat $ intersperse " " $ [
+    show (MyState cont i pc regs ioRegs e) = concat $ intersperse " " $ [
             "canContinue =", show cont,
             "pc =", showHex16 pc,
             "registers =", show regs,
-            "ioCA =", showHex ioCA,
-            "ioVA =", showHex ioVA,
-            "ioCB =", showHex ioCB,
-            "ioVB =", showHex ioVB,
+            "ioRegisters =", show ioRegs,
             "e =", e
         ]
 
 jp :: Address -> (Int, PCState)
 jp addr = (3, do
-        MyState _ i pc a ioCA ioVA ioCB ioVB e <- get
+        lift $ putStrLn ("jp " ++ show addr)
+        MyState _ i pc regs ioRegs e <- get
         newPc <- decodeAddress addr
 
         case newPc of
             Nothing -> fatalError
-            Just addr' -> put $ MyState True i addr' a ioCA ioVA ioCB ioVB e
-        lift $ putStrLn ("jp " ++ show addr)
+            Just addr' -> put $ MyState True i addr' regs ioRegs e
         )
 
 fatalError = return ()
@@ -145,59 +163,56 @@ decodeAddress (LabelValue label) = do
 
 ldA :: Int -> (Int, PCState)
 ldA num = (2, do
-        MyState _ i pc regs ioCA ioVA ioCB ioVB e <- get
-        let newPc = (pc + 2)
-        put $ MyState True i newPc (regs { areg = num}) ioCA ioVA ioCB ioVB e
         lift $ putStrLn ("ldA " ++ showHex num)
+        MyState _ i pc regs ioRegs e <- get
+        put $ MyState True i (pc + 2) (regs { areg = num}) ioRegs e
         )
 
 halt :: (Int, PCState)
 halt = (1, do
-        MyState _ i pc a ioCA ioVA ioCB ioVB e <- get
-        let newPc = (pc + 1)
-        put $ MyState False i newPc a ioCA ioVA ioCB ioVB "HALT"
         lift $ putStrLn "halt"
+        MyState _ i pc regs ioRegs e <- get
+        let newPc = (pc + 1)
+        put $ MyState False i newPc regs ioRegs "HALT"
         )
 
 outA :: Int -> (Int, PCState)
 outA port = (2,
         do
-            state@(MyState cont i pc regs ioCA ioVA ioCB ioVB e) <- get
+            lift $ putStrLn ("outA " ++ showHex port)
+            state@(MyState cont i pc regs ioRegs e) <- get
+
             let
                 newPc = (pc + 2)
-                res = outState port regs ioCA ioVA ioCB ioVB
+                res = outState port regs ioRegs
 
             case res of
-                Nothing -> put $ MyState False i newPc regs ioCA ioVA ioCB ioVB "ERROR"
-                Just (regs', ioCA', ioVA', ioCB', ioVB') -> do
-                    put $ MyState True i newPc regs' ioCA' ioVA' ioCB' ioVB' e
+                Nothing -> put $ MyState False i newPc regs ioRegs "ERROR"
+                Just (regs', ioRegs') -> do
+                    put $ MyState True i newPc regs' ioRegs' e
                     outAction port (areg regs')
 
-            lift $ putStrLn ("outA " ++ showHex port)
     )
 
 inA :: Int -> (Int, PCState)
 inA port = (2,
         do
-            state@(MyState _ i pc regs ioCA ioVA ioCB ioVB e) <- get
-            let
-                newPc = (pc + 2)
-
-            res <- inAction port regs ioCA ioVA ioCB ioVB
+            lift $ putStrLn ("inA " ++ showHex port)
+            state@(MyState _ i pc regs ioRegs e) <- get
+            res <- inAction port regs ioRegs
 
             case res of
-                Nothing -> put $ MyState False i pc regs ioCA ioVA ioCB ioVB "ERROR"
-                Just (regs', inValue, ioCA', ioVA', ioCB', ioVB') -> put $ MyState True i newPc (regs {areg = inValue} ) ioCA' ioVA' ioCB' ioVB' e
-            lift $ putStrLn ("inA " ++ showHex port)
+                Nothing -> put $ MyState False i pc regs ioRegs "ERROR"
+                Just (regs', inValue, ioRegs') -> put $ MyState True i (pc + 2) (regs {areg = inValue} ) ioRegs' e
     )
 
-inAction 0x00 regs 0x4f _ ioCB ioVB = do
+inAction 0x00 regs ioRegs | ioControlA ioRegs == 0x4f = do
     lift $ putStr "Please enter a value for port 0x00:"
     lift $ hFlush stdout
     newVal <- lift (readLn :: IO Int)
-    return $ Just (regs, newVal, 0x4f, newVal, ioCB, ioVB)
+    return $ Just (regs, newVal, ioRegs { ioValueA = newVal } )
 
-inAction  _ _ _ _ _ _  = return Nothing
+inAction  _ _ _ = return Nothing
 
 {-
 00 is val a
@@ -206,12 +221,12 @@ inAction  _ _ _ _ _ _  = return Nothing
 03 is con b
 -}
 
-outState :: Int -> Registers -> Int -> Int -> Int -> Int -> Maybe (Registers, Int, Int, Int, Int)
---outState port regs ioControlA ioAValue ioControlB ioBValue = ???
-outState 0x01 regs ioControlA ioAValue 0x0f ioBValue = Just (regs, ioControlA, ioAValue, 0x0f, areg regs)
-outState 0x02 regs ioControlA ioAValue ioControlB ioBValue | areg regs == 0x4f  = Just (regs, 0x4f, ioAValue, ioControlB, ioBValue)
-outState 0x03 regs ioControlA ioAValue ioControlB ioBValue | areg regs == 0x0f = Just (regs, ioControlA, ioAValue, 0x0f, ioBValue)
-outState _ _ _ _ _ _ = Nothing
+outState :: Int -> Registers -> IORegisters -> Maybe (Registers, IORegisters)
+outState port regs ioRegs
+    | port == 0x01 && ioControlB ioRegs == 0x0f = Just (regs, ioRegs { ioValueB = areg regs })
+    | port == 0x02 && areg regs == 0x4f = Just (regs, ioRegs { ioControlA = areg regs })
+    | port == 0x03 && areg regs == 0x0f = Just (regs, ioRegs { ioControlB = areg regs })
+outState _ _ _ = Nothing
 
 outAction 0x00 a = lift $ putStrLn ("NEW PORT VALUE A: " ++ showHex a)
 outAction 0x01 a = lift $ putStrLn ("NEW PORT VALUE B: " ++ showHex a)
@@ -219,7 +234,59 @@ outAction 0x02 a = lift $ putStrLn ("NEW PORT CONTROL A: " ++ showHex a)
 outAction 0x03 a = lift $ putStrLn ("NEW PORT CONTROL B: " ++ showHex a)
 outAction _ _ = return ()
 
+cpA :: Int -> (Int, PCState)
+cpA val = (2,
+        do
+            lift $ putStrLn ("cpA " ++ showHex val)
+            state@(MyState _ i pc regs ioRegs e) <- get
 
+            let
+                newPc = (pc + 2)
+                newFReg = if areg regs == val
+                  then freg regs .|. flagMask_Z
+                  else freg regs .&. flagMask_INVERSEZ
+
+            put $ state {pc = newPc, registers = regs {freg = newFReg} }
+    )
+
+jpNZ :: Address -> (Int, PCState)
+jpNZ addr = (2, do
+        lift $ putStrLn ("jpNZ " ++ show addr)
+        MyState _ i pc regs ioRegs e <- get
+
+        if freg regs .&. flagMask_Z == 0
+          then do
+            newPc <- decodeAddress addr
+            case newPc of
+                Nothing -> fatalError
+                Just addr' -> put $ MyState True i addr' regs ioRegs e
+          else
+            put $ MyState True i (pc + 2) regs ioRegs e
+    )
+
+jpZ :: Address -> (Int, PCState)
+jpZ addr = (2, do
+        lift $ putStrLn ("jpNZ " ++ show addr)
+        MyState _ i pc regs ioRegs e <- get
+
+        if freg regs .&. flagMask_Z == flagMask_Z
+          then do
+            newPc <- decodeAddress addr
+            case newPc of
+                Nothing -> fatalError
+                Just addr' -> put $ MyState True i addr' regs ioRegs e
+          else
+            put $ MyState True i (pc + 2) regs ioRegs e
+    )
+
+nop :: (Int, PCState)
+nop = (1, do
+        lift $ putStrLn "nop"
+        state <- get
+        put $ state {pc = pc state + 1}
+    )
+
+          
 {-
 LD A,h_4F;
 OUT (h_02),A;
