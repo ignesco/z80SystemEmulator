@@ -17,7 +17,7 @@ prt1 = [
         Unlabled $ ldA 0x34,
         Unlabled $ cpA 0x34,
         Unlabled $ cpA 0x88,
-        Unlabled $ jpNZ (NumberValue 0x00),
+        Unlabled $ jpNZ (NumberValue 0x0000),
         Unlabled $ halt
         ]
 
@@ -61,7 +61,32 @@ pr4 = [
         Unlabled $ pop DE,
         Unlabled $ halt
     ]
-pr' = pr4
+
+pr5 = [
+        Unlabled $ ldRRnn SP 0x00ff,
+        Unlabled $ call $ LabelValue "TheSub",
+        Unlabled $ nop,
+        Unlabled $ nop,
+        Unlabled $ nop,
+        Unlabled $ nop,
+        Unlabled $ halt,
+
+        Label "TheSub" $ nop,
+        Unlabled $ nop,
+        Unlabled $ nop,
+        Unlabled $ ret
+    ]
+
+pr6 = [
+        Unlabled $ ldRRnn SP 0x00ff,
+        Unlabled $ ldRRnn HL 0x1234,
+        Unlabled $ push HL,
+        Unlabled $ ldRR_nn_ DE 0x00fd,
+        Unlabled $ pop BC,
+        Unlabled $ halt        
+    ]
+
+pr' = pr6
 
 
 -- =============================================== --
@@ -70,6 +95,7 @@ flagMask_Z = 0x01
 flagMask_INVERSEZ = 0xfe
 
 type PCState = StateT MyState IO ()
+type PCState_ = StateT MyState IO
 
 data Registers = Registers {areg :: Int, breg :: Int, creg :: Int, dreg :: Int, ereg :: Int, freg :: Int, hreg :: Int, lreg :: Int, spreg :: Int}
 
@@ -84,6 +110,9 @@ instance Show Registers where
 to16Bit :: Int -> Int -> Int
 to16Bit x y = ((x .&. 0xff) `shiftL` 8) .|. (y .&. 0xff)
 
+to2x8 :: Int -> (Int, Int)
+to2x8 v = ( ((v .&. 0xff00) `shiftR` 8) .&. 0xff, v .&. 0xff )
+
 data IORegisters = IORegisters {ioControlA :: Int, ioValueA :: Int , ioControlB :: Int, ioValueB :: Int}
 instance Show IORegisters where
     show iors = "(IOREGISTERS: ioControlA = "   ++ showHex (ioControlA iors) ++ ", "
@@ -93,8 +122,8 @@ instance Show IORegisters where
 
 
 data ProgramData = ProgramData {ins :: [(Int, PCState)], lab :: [(String, Int)]}
-        
-data MyState = MyState { canContinue :: Bool, programData :: ProgramData, pc  :: Int, registers :: Registers, ioRegisters :: IORegisters, memory :: H.Map Int Int, e :: String }
+type Mem = H.Map Int Int
+data MyState = MyState { canContinue :: Bool, programData :: ProgramData, pc  :: Int, registers :: Registers, ioRegisters :: IORegisters, memory :: Mem, e :: String }
 
 data AnnotatedPCState = Label String (Int, PCState) | Unlabled (Int, PCState)
 
@@ -106,17 +135,17 @@ runMachine instructions  = let
             initIORegisters = IORegisters {ioControlA = 0, ioValueA = 0, ioControlB = 0, ioValueB = 0}
             initMemory = H.fromList $ zip [0..0xffff] (repeat 0)
 
-            seed :: [AnnotatedPCState] -> Int -> [(Int, PCState)] -> [(String, Int)] -> ([(Int, PCState)], [(String, Int)])
-            seed [] addr acc labelAcc  = (acc, labelAcc)
+            seed :: [AnnotatedPCState] -> Int -> [(Int, PCState)] -> [(String, Int)] -> (Int, [(Int, PCState)], [(String, Int)])
+            seed [] addr acc labelAcc  = (addr, acc, labelAcc)
             seed (Unlabled (a, i):is) addr acc labelAcc = seed is (addr+a)  ((addr, i):acc) labelAcc
             seed (Label labelName (a, i):is) addr acc labelAcc = seed is (addr+a)  ((addr, i):acc) ((labelName, addr):labelAcc)
 
-            (instructions', labels) = seed instructions 0 [] []
-
+            (topAddr, instructions', labels) = seed instructions 0 [] []
 
             initState = MyState True (ProgramData instructions' labels) 0 initRegisters initIORegisters initMemory ""
 
         in do
+            putStrLn $ "top address:" ++ showHex16 topAddr
             putStrLn $ show labels
             putStrLn $ show initState
             (exitedWithError, newState) <- runStateT runMe initState
@@ -138,18 +167,19 @@ dodebug :: String -> PCState
 dodebug s = do
         lift $ putStrLn s
 
-debug :: String -> (Int, PCState) -> (Int, PCState)
-debug s (x, instruction) = (x, dodebug s >> instruction)
+debug :: String -> AnnotatedPCState -> AnnotatedPCState
+debug d (Label s (n, p)) = Label s (n, dodebug d >>  p)
+debug d (Unlabled (n, p)) = Unlabled (n, dodebug d >> p)
 
 showHex :: Int -> String
 showHex v
     | v >= 0 && v <= 255 = "0x" ++ (hexChar (  (v .&. 0xF0) `shiftR` 4  )) ++ (hexChar ( v .&. 0x0F ))
-    | otherwise = "NUMBER OUT OF RANGE"
+    | otherwise = "NUMBER OUT OF RANGE:"++ show v
 
 showHex16 :: Int -> String
 showHex16 v
     | v >= 0 && v <= 65535 = "0x" ++  (hexChar ( (v .&. 0xF000) `shiftR` 12 )) ++ (hexChar ( (v .&. 0x0F00) `shiftR` 8 )) ++ (hexChar ( (v .&. 0x00F0) `shiftR` 4 )) ++ (hexChar ( v .&. 0x000F ))
-    | otherwise = "NUMBER OUT OF RANGE"
+    | otherwise = "NUMBER OUT OF RANGE:"++ show v
 
 hexChar val = [maybe '-' id (lookup val (zip [0..] "0123456789abcdef" ))]
 
@@ -193,7 +223,9 @@ jp addr = (3, do
             Just addr' -> put $ MyState True i addr' regs ioRegs mem e
         )
 
-fatalError = return ()
+fatalError = do
+    state <- get
+    put $ state {canContinue = False, e = "ERROR"}
 
 decodeAddress :: Address -> StateT MyState IO (Maybe Int)
 decodeAddress (NumberValue num) = return $ Just num
@@ -329,25 +361,45 @@ nop = (1, do
 data Reg8Spec = A | F | B | C | D | E | H | L | S | P deriving Show
 data Reg16Spec = AF | BC | DE | HL | SP deriving Show
 
+
+dumpMemory :: Int -> Mem -> PCState
+dumpMemory upto mem = lift $ putStrLn $ show (take upto $ map (\(a,v) -> (showHex16 a, showHex v) )  (H.toList mem))
+
 ldRRnn :: Reg16Spec -> Int -> (Int, PCState)
-ldRRnn SP num = (3, do
-        lift $ putStrLn $ "ldRRnn SP" ++ " " ++ showHex16 num
-        state <- get
-        let regs' = registers state
-        put $ state {pc = pc state + 3, registers = regs' {spreg = num} }
- )
-        
 ldRRnn reg16 num = (3, do
-        lift $ putStrLn $ "ldRRnn " ++ show reg16 ++ " " ++ showHex16 num
-        state <- get
-        let
-            (rh, rl) = getReg16Pair reg16
-            regs' = registers state
-            low = num .&. 0x00ff
-            high = ((num .&. 0xff00) `shiftR` 8) .&. 0xff
-            rhigh = modifyReg rh (const high) regs'
-            rlow = modifyReg rl (const low) rhigh
-        put $ state {pc = pc state + 3, registers = rlow}
+    lift $ putStrLn $ "ldRRnn " ++ show reg16 ++ " " ++ showHex16 num
+    _ldRRnn 3 reg16 num
+ )
+
+_ldRRnn :: Int -> Reg16Spec -> Int -> PCState
+_ldRRnn size SP num = do
+    state <- get
+    let regs' = registers state
+    put $ state {pc = pc state + size, registers = regs' {spreg = num} }
+
+_ldRRnn size reg16 num = do
+    state <- get
+    let
+        (rh, rl) = getReg16Pair reg16
+        regs' = registers state
+        low = num .&. 0x00ff
+        high = ((num .&. 0xff00) `shiftR` 8) .&. 0xff
+        rhigh = modifyReg rh (const high) regs'
+        rlow = modifyReg rl (const low) rhigh
+    put $ state {pc = pc state + size, registers = rlow}
+
+ldRR_nn_ :: Reg16Spec -> Int -> (Int, PCState)
+ldRR_nn_ reg16 addr = (4, do
+    lift $ putStrLn $ "ldRR_nn_ " ++ show reg16 ++ " " ++ showHex16 addr
+    state <- get
+    let
+        mem = memory state
+        hmem' = H.lookup (addr + 1) mem
+        lmem' = H.lookup addr mem
+    case (hmem', lmem') of
+        (Just hmem, Just lmem) -> do
+            _ldRRnn 4 reg16 (to16Bit hmem lmem)
+        otherwise -> fatalError
  )
 
 ld_nn_A :: Int -> (Int, PCState)
@@ -383,32 +435,79 @@ push reg16 = (1, do
         (high, low) = getReg16Pair reg16
         hval = valueReg high regs
         lval = valueReg low regs
-        sp = spreg regs
-        mem = memory state
-        memhigh = H.insert (sp - 1) hval mem
-        memlow = H.insert (sp - 2) lval memhigh
-    put $ state {pc = (pc state) + 1, registers = regs {spreg = (spreg regs) - 2}, memory = memlow}
+    _pushValue (hval, lval)
+    state' <- get
+    put $ state' {pc = (pc state') + 1}
  )
 
 pop :: Reg16Spec -> (Int, PCState)
 pop reg16 = (1, do
     lift $ putStrLn $ "pop " ++ show reg16
+
+    state <- get
+    let
+        (high, low) = getReg16Pair reg16
+        regs = registers state
+
+    vals <- _popValue    
+    case vals of
+        Just (memhval,memlval) -> do
+            let
+                regs1 = modifyReg high (const memhval) regs
+                regs2 = modifyReg low (const memlval) regs1
+            put $ state {pc = (pc state) + 1, registers = regs2}
+        otherwise -> put $ state {canContinue = False, e = "ERROR"}
+ )
+
+_popValue :: PCState_ (Maybe (Int, Int))
+_popValue = do
     state <- get
     let
         regs = registers state
         mem = memory state
         sp = spreg regs
-        memhval' = H.lookup (sp + 1) mem
         memlval' = H.lookup sp mem
-        (high, low) = getReg16Pair reg16
-
+        memhval' = H.lookup (sp + 1) mem
     case (memhval', memlval') of
         (Just memhval, Just memlval) -> do
-            let
-                highreg = modifyReg high (const memhval) regs
-                lowreg = modifyReg low (const memlval) highreg
-            put $ state {pc = (pc state) + 1, registers = lowreg {spreg = (spreg regs) + 2}}
-        otherwise -> put $ state {canContinue = False, e = "ERROR"}
+            put $ state {registers = regs {spreg = sp + 2}}
+            return $ Just (memhval, memlval)
+        otherwise -> return Nothing
+
+_pushValue :: (Int, Int) -> PCState
+_pushValue (hval, lval) = do
+    state <- get
+    let
+        regs = registers state
+        sp = spreg regs
+        mem = memory state
+        mem1 = H.insert (sp - 2) lval mem
+        mem2 = H.insert (sp - 1) hval mem1
+    put $ state {registers = regs {spreg = sp - 2}, memory = mem2}
+
+call :: Address -> (Int, PCState)
+call addr = (3, do
+    lift $ putStrLn $ "call " ++ show addr
+    newPc' <- decodeAddress addr
+
+    case newPc' of
+        Just newPc -> do 
+            state' <- get
+            _pushValue $ to2x8 (pc state' + 3)
+            state <- get
+            put $ state {pc = newPc}
+        otherwise -> fatalError
+ )
+
+ret :: (Int, PCState)
+ret = (1, do
+    lift $ putStrLn "ret"
+    val <- _popValue
+    case val of
+        Just (high, low) -> do
+            state <- get
+            put $ state {pc = to16Bit high low}
+        otherwise -> fatalError
  )
 
 modifyReg :: Reg8Spec -> (Int -> Int) -> Registers -> Registers
