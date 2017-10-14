@@ -81,13 +81,118 @@ pr6 = [
         Unlabled $ ldRRnn SP 0x00ff,
         Unlabled $ ldRRnn HL 0x1234,
         Unlabled $ push HL,
-        Unlabled $ ldRR_nn_ DE 0x00fd,
+        Unlabled $ ldRR_nn_ DE (NumberValue 0x00fd),
         Unlabled $ pop BC,
-        Unlabled $ halt        
+        Unlabled $ halt
     ]
 
-pr' = pr6
+pr7 = [
+        Unlabled $ ldRRnn HL 0x9876,
+        Unlabled $ ld_nn_RR (NumberValue 0x00ff) HL,
 
+        Unlabled $ ldRR_nn_ DE (NumberValue 0x00ff),
+
+        Unlabled $ halt
+    ]
+
+pr8 = [
+        Unlabled $ ldRRnn HL 0x9876,
+        Unlabled $ ldrr H L,
+        Unlabled $ ldrr D L,
+        Unlabled $ halt
+    ]
+
+pr9 = [
+        Unlabled $ ldrn D 0x81,
+        Unlabled $ ldrn A 0x80,
+        Unlabled $ halt
+    ]
+
+pr10 = [
+        Unlabled $ ldrn A 0x10,
+        Unlabled $ ldrn B 0x13,
+        Unlabled $ addAr B,
+        Unlabled $ addAn 0x40,
+        Unlabled $ halt
+    ]
+
+pr11 = [
+        Unlabled $ ldrn A 0x89,
+        Unlabled $ ldRRnn HL 0x9876,
+        Unlabled $ ld_nn_RR (NumberValue 0x00ff) HL,
+        Unlabled $ ldRRnn HL 0x00ff,
+        Unlabled $ addA_HL_,
+        Unlabled $ halt
+    ]
+
+pr12 = [
+        Unlabled $ ldrn A 0x12,
+        Unlabled $ ldrn B 0x12,
+        Unlabled $ subAr B,
+        Unlabled $ subAn 0x40,
+        Unlabled $ halt
+    ]
+
+pr13 = [
+        Unlabled $ ldrn A 0x8a,
+        Unlabled $ ldRRnn HL 0x0011,
+        Unlabled $ ld_nn_RR (NumberValue 0x00ff) HL,
+        Unlabled $ ldRRnn HL 0x00ff,
+        Unlabled $ subA_HL_,
+        Unlabled $ halt
+    ]
+
+pr14 = [
+        Unlabled $ ldrn A 0xca,
+        Unlabled $ ldrn B 0x00,
+        Unlabled $ andAr B,
+--        Unlabled $ andAn 0x03,
+        Unlabled $ halt
+    ]
+
+pr15 = [
+        Unlabled $ ldrn A 0xca,
+        Unlabled $ ldRRnn HL 0x0003,
+        Unlabled $ ld_nn_RR (NumberValue 0x00ff) HL,
+        Unlabled $ ldRRnn HL 0x00ff,
+        Unlabled $ andA_HL_,
+        Unlabled $ halt
+    ]
+
+pr16 = [
+        Unlabled $ ldrn A 0xca,
+        Unlabled $ ldrn B 0xca,
+        Unlabled $ cpr B,
+        Unlabled $ ldrn B 0xff,
+        Unlabled $ cpr B,
+        Unlabled $ halt
+    ]
+
+pr17 = [
+        Unlabled $ ldrn A 0xff,
+        Unlabled $ incr A,
+
+        Unlabled $ ldrn B 0xdd,
+        Unlabled $ decr B,
+
+        Unlabled $ halt
+    ]
+
+pr18 = [
+        Unlabled $ ldrn A 0xca,
+        Unlabled $ ld_nn_A 0x00ff,
+        Unlabled $ ldrn A 0x00,
+
+        Unlabled $ ldRRnn HL 0xff,
+
+        Unlabled $ dec_HL_,
+
+        Unlabled $ ldA_nn_ 0x00ff,
+
+        Unlabled $ halt
+    ]
+
+pr' = pr17
 
 -- =============================================== --
 
@@ -104,8 +209,8 @@ instance Show Registers where
         ++ " bc = " ++ showHex16 (to16Bit (breg rs) (creg rs))
         ++ " de = " ++ showHex16 (to16Bit (dreg rs) (ereg rs))
         ++ " hl = " ++ showHex16 (to16Bit (hreg rs) (lreg rs))
-        ++ " sp=" ++ showHex16 (spreg rs) ++ " )"
-        ++ " f = " ++ showHex (freg rs)
+        ++ " sp=" ++ showHex16 (spreg rs)
+        ++ " f = " ++ showHex (freg rs) ++ " )"
 
 to16Bit :: Int -> Int -> Int
 to16Bit x y = ((x .&. 0xff) `shiftL` 8) .|. (y .&. 0xff)
@@ -388,17 +493,47 @@ _ldRRnn size reg16 num = do
         rlow = modifyReg rl (const low) rhigh
     put $ state {pc = pc state + size, registers = rlow}
 
-ldRR_nn_ :: Reg16Spec -> Int -> (Int, PCState)
-ldRR_nn_ reg16 addr = (4, do
-    lift $ putStrLn $ "ldRR_nn_ " ++ show reg16 ++ " " ++ showHex16 addr
-    state <- get
-    let
-        mem = memory state
-        hmem' = H.lookup (addr + 1) mem
-        lmem' = H.lookup addr mem
-    case (hmem', lmem') of
-        (Just hmem, Just lmem) -> do
-            _ldRRnn 4 reg16 (to16Bit hmem lmem)
+ldRR_nn_ :: Reg16Spec -> Address -> (Int, PCState)
+ldRR_nn_ reg16 addr'' = (4, do
+    addr' <- decodeAddress addr''
+    case addr' of
+        Just addr -> do
+
+            lift $ putStrLn $ "ldRR_nn_ " ++ show reg16 ++ " " ++ showHex16 addr
+            state <- get
+            let
+                mem = memory state
+                hmem' = H.lookup (addr + 1) mem
+                lmem' = H.lookup addr mem
+            case (hmem', lmem') of
+                (Just hmem, Just lmem) -> do
+                    _ldRRnn 4 reg16 (to16Bit hmem lmem)
+                otherwise -> fatalError
+        otherwise -> fatalError
+     )
+
+ld_nn_RR :: Address -> Reg16Spec -> (Int, PCState)
+ld_nn_RR addr HL = _ld_nn_RR addr HL 3
+ld_nn_RR addr reg16 = _ld_nn_RR addr reg16 4
+
+_ld_nn_RR :: Address -> Reg16Spec -> Int -> (Int, PCState)
+_ld_nn_RR addr'' reg16 size = (size, do
+    addr' <- decodeAddress addr''
+    case addr' of
+        Just addr -> do
+            lift $ putStrLn $ "ld_nn_RR " ++ show reg16 ++ " " ++ showHex16 addr
+            state <- get
+            let
+                mem = memory state
+                regs = registers state
+                (high, low) = getReg16Pair reg16
+                hval = valueReg high regs
+                lval = valueReg low regs
+
+                mem1 = H.insert addr lval mem
+                mem2 = H.insert (addr + 1) hval mem1
+
+            put $ state {pc = pc state + size, memory = mem2}
         otherwise -> fatalError
  )
 
@@ -415,7 +550,7 @@ ld_nn_A loc = (3, do
 
 ldA_nn_ :: Int -> (Int, PCState)
 ldA_nn_ loc = (3, do
-    lift $ putStrLn $ "ldA_nn_" ++ showHex16 loc
+    lift $ putStrLn $ "ldA_nn_ " ++ showHex16 loc
     state <- get
     let
         mem = memory state
@@ -424,6 +559,223 @@ ldA_nn_ loc = (3, do
     case val of
         Nothing -> put $ state {canContinue = False, e = "ERROR"}
         Just val' -> put $ state {pc = pc state + 3, registers = regs {areg = val'}}
+ )
+
+ldrr :: Reg8Spec -> Reg8Spec -> (Int, PCState)
+ldrr r r' = (1, do
+    lift $ putStrLn $ "ldrr " ++ show r ++ " " ++ show r'
+    state <- get
+    let
+        regs = registers state
+        v' = valueReg r' regs
+        regs' = modifyReg r (const v') regs
+
+    put $ state { pc = (pc state) + 1, registers = regs' }
+ )
+
+mop :: (Int -> Int -> Int) -> (Int -> Int -> PCState_ (Bool, Int))
+mop f = (\x y -> return $ (True, f x y))
+
+addAr :: Reg8Spec -> (Int, PCState)
+addAr reg8 = _regA_Arith_Ar 1 reg8 (mop (+)) "addAr "
+
+addAn :: Int -> (Int, PCState)
+addAn num = _regA_Arith_An 2 num (mop (+)) "addAn "
+
+addA_HL_ :: (Int, PCState)
+addA_HL_ = _regA_Arith_A_HL_ 1 (mop (+)) "addA_HL_ "
+
+subAr :: Reg8Spec -> (Int, PCState)
+subAr reg8 = _regA_Arith_Ar 1 reg8 (mop (-)) "subAr "
+
+subAn :: Int -> (Int, PCState)
+subAn num = _regA_Arith_An 2 num (mop (-)) "subAn "
+
+subA_HL_ :: (Int, PCState)
+subA_HL_ = _regA_Arith_A_HL_ 1 (mop (-)) "subA_HL_ "
+
+andAr :: Reg8Spec -> (Int, PCState)
+andAr reg8 = _regA_Arith_Ar 1 reg8 (mop (.&.)) "andAr "
+
+andAn :: Int -> (Int, PCState)
+andAn num = _regA_Arith_An 2 num (mop (.&.)) "andAn "
+
+andA_HL_ :: (Int, PCState)
+andA_HL_ = _regA_Arith_A_HL_ 1 (mop (.&.)) "andA_HL_ "
+
+orAr :: Reg8Spec -> (Int, PCState)
+orAr reg8 = _regA_Arith_Ar 1 reg8 (mop (.|.)) "orAr "
+
+orAn :: Int -> (Int, PCState)
+orAn num = _regA_Arith_An 2 num (mop (.|.)) "orAn "
+
+orA_HL_ :: (Int, PCState)
+orA_HL_ = _regA_Arith_A_HL_ 1 (mop (.|.)) "orA_HL_ "
+
+xorAr :: Reg8Spec -> (Int, PCState)
+xorAr reg8 = _regA_Arith_Ar 1 reg8 (mop xor) "xorAr "
+
+xorAn :: Int -> (Int, PCState)
+xorAn num = _regA_Arith_An 2 num (mop xor) "xorAn "
+
+xorA_HL_ :: (Int, PCState)
+xorA_HL_ = _regA_Arith_A_HL_ 1 (mop xor) "xorA_HL_ "
+
+cpAction :: Int -> Int -> PCState_ (Bool, Int)
+cpAction r v = do
+    updateZeroFlag' (r == v)
+    return (False, r)
+
+cpr :: Reg8Spec -> (Int, PCState)
+cpr reg8 = _regA_Arith_Ar 1 reg8 cpAction "cpr "
+
+cpn :: Int -> (Int, PCState)
+cpn num = _regA_Arith_An 2 num cpAction "cpAn "
+
+cp_HL_ :: (Int, PCState)
+cp_HL_ = _regA_Arith_A_HL_ 1 cpAction "cpA_HL "
+
+updateZeroFlag :: PCState
+updateZeroFlag = do
+    state <- get
+    let
+        regs = registers state
+        aval = valueReg A regs
+        newFReg = if aval == 0
+            then freg regs .|. flagMask_Z
+            else freg regs .&. flagMask_INVERSEZ
+        regs' = modifyReg F (const newFReg) regs
+    put $ state { registers = regs' }
+
+updateZeroFlag' :: Bool -> PCState
+updateZeroFlag' cond = do
+    state <- get
+    let
+        regs = registers state
+        newFReg = if cond
+            then freg regs .|. flagMask_Z
+            else freg regs .&. flagMask_INVERSEZ
+        regs' = modifyReg F (const newFReg) regs
+    put $ state { registers = regs' }
+
+
+_regA_Arith_Ar :: Int -> Reg8Spec -> (Int -> Int -> PCState_ (Bool, Int)) -> String -> (Int, PCState)
+_regA_Arith_Ar size reg8 _op name = (size, do
+    lift $ putStrLn $ name ++ show reg8
+    state <- get
+    let
+        regs = registers state
+        v' = valueReg reg8 regs
+    modifyRegM A (`_op` v')
+
+    state' <- get
+    put $ state' { pc = (pc state') + size}
+ )
+
+_regA_Arith_An :: Int -> Int -> (Int -> Int -> PCState_ (Bool, Int)) -> String -> (Int, PCState)
+_regA_Arith_An size num _op name = (size, do
+    lift $ putStrLn $ name ++ showHex num
+    modifyRegM A (`_op` num)
+
+    state <- get
+    put $ state { pc = (pc state) + size}
+ )
+
+_regA_Arith_A_HL_ :: Int -> (Int -> Int -> PCState_ (Bool, Int)) -> String -> (Int, PCState)
+_regA_Arith_A_HL_ size _op name = (size, do
+    lift $ putStrLn $ name ++ "HL"
+    state <- get
+    let
+        mem = memory state
+        regs = registers state
+        addrh = valueReg H regs
+        addrl = valueReg L regs
+
+        addr = to16Bit addrh addrl
+        memval' = H.lookup addr mem
+
+    case memval' of
+        Just memval -> do
+            modifyRegM A (`_op` memval)
+            state' <- get
+            put $ state' { pc = (pc state') + size }
+        otherwise -> fatalError
+ )
+
+incr :: Reg8Spec -> (Int, PCState)
+incr reg8 = _adjr reg8 (\v -> v + 1) "inc "
+
+decr :: Reg8Spec -> (Int, PCState)
+decr reg8 = _adjr reg8 (\v -> v - 1) "dec "
+
+_adjr :: Reg8Spec -> (Int -> Int) -> String -> (Int, PCState)
+_adjr reg8 adj name = (1, do
+    lift $ putStrLn $ name ++ (show reg8)
+    state <- get
+    let
+        regs = registers state
+        val = valueReg reg8 regs
+        newval = adj val
+        newRegs = modifyReg reg8 (const newval) regs
+    put $ state { pc = (pc state) + 1, registers = newRegs }
+
+    updateZeroFlag' ((newval .&. 0xff) == 0)
+ )
+
+inc_HL_ :: (Int, PCState)
+inc_HL_ = _adj_HL_ (\v -> v + 1) "inc "
+
+dec_HL_ :: (Int, PCState)
+dec_HL_ = _adj_HL_ (\v -> v - 1) "dec "
+
+_adj_HL_ :: (Int -> Int) -> String -> (Int, PCState)
+_adj_HL_ adj name = (1, do
+    lift $ putStrLn $ name ++ "(HL)"
+    state <- get
+    let
+
+        mem = memory state
+        regs = registers state
+        addrh = valueReg H regs
+        addrl = valueReg L regs
+
+        addr = to16Bit addrh addrl
+        memval' = H.lookup addr mem
+
+    case memval' of
+        Just memval -> do
+            let
+                newval = adj memval
+                mem' = H.insert addr newval mem
+            put $ state { pc = (pc state) + 1, memory = mem' }
+            updateZeroFlag' ((newval .&. 0xff) == 0)
+        otherwise -> fatalError
+ )
+
+{-
+
+RLCA
+RRCA
+
+BIT b,r
+BIT b,(HL)
+
+SET b,r
+SET b,(HL)
+
+RES b,r
+RES b,(HL)
+-}
+
+
+ldrn :: Reg8Spec -> Int -> (Int, PCState)
+ldrn reg8 num = (2, do
+    lift $ putStrLn $ "ldrn " ++ show reg8 ++ " " ++ showHex num
+    state <- get
+    let
+        regs = registers state
+        regs' = modifyReg reg8 (const num) regs
+    put $ state { pc = (pc state) + 2, registers = regs' }
  )
 
 push :: Reg16Spec -> (Int, PCState)
@@ -511,14 +863,29 @@ ret = (1, do
  )
 
 modifyReg :: Reg8Spec -> (Int -> Int) -> Registers -> Registers
-modifyReg A f s = s { areg = f (areg s)}
-modifyReg F f s = s { freg = f (freg s)}
-modifyReg B f s = s { breg = f (breg s)}
-modifyReg C f s = s { creg = f (creg s)}
-modifyReg D f s = s { dreg = f (dreg s)}
-modifyReg E f s = s { ereg = f (ereg s)}
-modifyReg H f s = s { hreg = f (hreg s)}
-modifyReg L f s = s { lreg = f (lreg s)}
+modifyReg A f s = s { areg = f (areg s) .&. 0xff}
+modifyReg F f s = s { freg = f (freg s) .&. 0xff}
+modifyReg B f s = s { breg = f (breg s) .&. 0xff}
+modifyReg C f s = s { creg = f (creg s) .&. 0xff}
+modifyReg D f s = s { dreg = f (dreg s) .&. 0xff}
+modifyReg E f s = s { ereg = f (ereg s) .&. 0xff}
+modifyReg H f s = s { hreg = f (hreg s) .&. 0xff}
+modifyReg L f s = s { lreg = f (lreg s) .&. 0xff}
+
+modifyRegM :: Reg8Spec -> (Int -> PCState_ (Bool, Int)) -> PCState
+modifyRegM reg8 f = do
+    state <- get
+    let
+        regs = registers state
+    (shouldUpdate, value) <- f (valueReg reg8 regs)
+    if shouldUpdate
+      then do
+        state' <- get
+        let newRegs = modifyReg reg8 (const value) (registers state')
+        put $ state' {registers = newRegs}
+        updateZeroFlag
+      else
+        return ()
 
 valueReg :: Reg8Spec -> Registers -> Int
 valueReg A regs = areg regs
