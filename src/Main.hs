@@ -192,7 +192,95 @@ pr18 = [
         Unlabled $ halt
     ]
 
-pr' = pr17
+pr19 = [
+        Unlabled $ ldrn A 0x80,
+        Unlabled $ rrca,
+        Unlabled $ ldrn A 0x81,
+        Unlabled $ rrca,
+        Unlabled $ halt
+    ]
+
+pr20 = [
+        Unlabled $ ldrn A 0x80,
+        Unlabled $ rlca,
+        Unlabled $ ldrn A 0x81,
+        Unlabled $ rlca,
+        Unlabled $ halt
+    ]
+
+pr21 = [
+        Unlabled $ ldrn A 0x82,
+        Unlabled $ bitbr 2 A,
+        Unlabled $ bitbr 7 A,
+        Unlabled $ bitbr 6 A,
+        Unlabled $ bitbr 1 A,
+        Unlabled $ halt
+    ]
+
+pr22 = [
+        Unlabled $ ldrn A 0x82,
+        Unlabled $ ld_nn_A 0x00ff,
+        Unlabled $ ldRRnn HL 0x00ff,
+        Unlabled $ bitb_HL_ 2,
+        Unlabled $ bitb_HL_ 7,
+        Unlabled $ bitb_HL_ 6,
+        Unlabled $ bitb_HL_ 1,
+        Unlabled $ halt
+    ]
+
+pr23 = [
+        Unlabled $ ldrn A 0x80,
+        Unlabled $ setbr 1 A,
+        Unlabled $ setbr 3 A,
+        Unlabled $ halt
+    ]
+
+pr24 = [
+        Unlabled $ ldrn A 0xff,
+        Unlabled $ resbr 1 A,
+        Unlabled $ resbr 3 A,
+        Unlabled $ halt
+    ]
+
+pr25 = [
+        Unlabled $ ldrn A 0x82,
+        Unlabled $ ld_nn_A 0x00ff,
+        Unlabled $ ldRRnn HL 0x00ff,
+        Unlabled $ setb_HL_ 2,
+        Unlabled $ ldA_nn_ 0x00ff,        
+        Unlabled $ setb_HL_ 7,
+        Unlabled $ ldA_nn_ 0x00ff,        
+        Unlabled $ setb_HL_ 6,
+        Unlabled $ ldA_nn_ 0x00ff,        
+        Unlabled $ setb_HL_ 0,
+        Unlabled $ ldA_nn_ 0x00ff,        
+        Unlabled $ halt
+    ]
+
+pr26 = [
+        Unlabled $ ldrn A 0xff,
+        Unlabled $ ld_nn_A 0x00ff,
+        Unlabled $ ldRRnn HL 0x00ff,
+        Unlabled $ resb_HL_ 2,
+        Unlabled $ ldA_nn_ 0x00ff,        
+        Unlabled $ resb_HL_ 7,
+        Unlabled $ ldA_nn_ 0x00ff,        
+        Unlabled $ resb_HL_ 6,
+        Unlabled $ ldA_nn_ 0x00ff,        
+        Unlabled $ resb_HL_ 0,
+        Unlabled $ ldA_nn_ 0x00ff,        
+        Unlabled $ halt
+    ]
+
+pr27 = [
+        Unlabled $ ldRRnn DE 0x00ff,
+        Unlabled $ incRR DE,
+        Unlabled $ ldRRnn DE 0x1000,
+        Unlabled $ decRR DE,
+        Unlabled $ halt
+    ]
+
+pr' = pr27
 
 -- =============================================== --
 
@@ -466,7 +554,6 @@ nop = (1, do
 data Reg8Spec = A | F | B | C | D | E | H | L | S | P deriving Show
 data Reg16Spec = AF | BC | DE | HL | SP deriving Show
 
-
 dumpMemory :: Int -> Mem -> PCState
 dumpMemory upto mem = lift $ putStrLn $ show (take upto $ map (\(a,v) -> (showHex16 a, showHex v) )  (H.toList mem))
 
@@ -733,7 +820,6 @@ _adj_HL_ adj name = (1, do
     lift $ putStrLn $ name ++ "(HL)"
     state <- get
     let
-
         mem = memory state
         regs = registers state
         addrh = valueReg H regs
@@ -752,21 +838,167 @@ _adj_HL_ adj name = (1, do
         otherwise -> fatalError
  )
 
-{-
+rrca :: (Int, PCState)
+rrca = (1, do
+    lift $ putStrLn "rrca"
+    state <- get
+    let
+        regs = registers state
+        aval = valueReg A regs
+        bit0 = aval .&. 0x01
+        arot = (rotateR aval 1) .&. 0xff
+        aval' = if bit0 > 0 then arot .|. 0x80 else arot
+        regs' = modifyReg A (const aval') regs
+    put $ state { pc = (pc state) + 1, registers = regs' }
+ )
 
-RLCA
-RRCA
+rlca :: (Int, PCState)
+rlca = (1, do
+    lift $ putStrLn "rlca"
+    state <- get
+    let
+        regs = registers state
+        aval = valueReg A regs
+        bit7 = aval .&. 0x80
+        arot = (rotateL aval 1) .&. 0xff
+        aval' = if bit7 > 0 then arot .|. 0x01 else arot
+        regs' = modifyReg A (const aval') regs
+    put $ state { pc = (pc state) + 1, registers = regs' }
+ )
 
-BIT b,r
-BIT b,(HL)
+bitbr :: Int -> Reg8Spec -> (Int, PCState)
+bitbr bit reg8 = (2, do
+    lift $ putStrLn $ "bitbr " ++ showHex bit ++ " " ++ show reg8
+    state <- get
+    let
+        regs = registers state
+        bitMask = 2 ^ bit
+        rval = valueReg reg8 regs
+        bitVal = rval .&. bitMask
+    updateZeroFlag' (bitVal == 0)
+    incPC 2
+ )
 
-SET b,r
-SET b,(HL)
+bitb_HL_ :: Int -> (Int, PCState)
+bitb_HL_ bit = (2, do
+    lift $ putStrLn $ "bitb_HL_ " ++ showHex bit
+    state <- get
+    let
+        mem = memory state
+        regs = registers state
+        bitMask = 2 ^ bit
 
-RES b,r
-RES b,(HL)
--}
+        addrh = valueReg H regs
+        addrl = valueReg L regs
 
+        addr = to16Bit addrh addrl
+        memval' = H.lookup addr mem
+
+    case memval' of
+        Just memval -> do
+            let bitVal = memval .&. bitMask
+            updateZeroFlag' (bitVal == 0)
+            incPC 2
+        otherwise -> fatalError
+ )
+
+setbr :: Int -> Reg8Spec -> (Int, PCState)
+setbr bit reg8 = (2, do
+    _modifybr bit reg8 True 2 "setbr "
+ )
+
+resbr :: Int -> Reg8Spec -> (Int, PCState)
+resbr bit reg8 = (2, do
+    _modifybr bit reg8 False 2 "resbr "
+ )
+
+_modifybr :: Int -> Reg8Spec -> Bool -> Int -> String -> PCState
+_modifybr bit reg8 val size name = do
+    lift $ putStrLn $ name ++ showHex bit ++ " " ++ show reg8
+    state <- get
+    let
+        regs = registers state
+        rval = valueReg reg8 regs
+        bitMask = 2 ^ bit
+        bitMaskInverse = (complement  (2 ^ bit) ) .&. 0xff
+        newrval = if val then rval .|. bitMask else rval .&. bitMaskInverse
+        regs' = modifyReg reg8 (const newrval) regs
+    put $ state {registers = regs'}
+    incPC size
+
+setb_HL_ :: Int -> (Int, PCState)
+setb_HL_ bit = (2, do
+    _modifyb_HL_ bit True 2 "setb_HL_ "
+ )
+
+resb_HL_ :: Int -> (Int, PCState)
+resb_HL_ bit = (2, do
+    _modifyb_HL_ bit False 2 "resb_HL_ "
+ )
+
+_modifyb_HL_ :: Int -> Bool -> Int -> String -> PCState
+_modifyb_HL_ bit val size name = do
+    lift $ putStrLn $ name ++ showHex bit
+    state <- get
+    let
+        regs = registers state
+        mem = memory state
+
+        addrh = valueReg H regs
+        addrl = valueReg L regs
+
+        addr = to16Bit addrh addrl
+        memval' = H.lookup addr mem
+
+    case memval' of
+        Just memval -> do
+            let
+                bitMask = 2 ^ bit
+                bitMaskInverse = (complement  (2 ^ bit) ) .&. 0xff
+                newmemval = if val then memval .|. bitMask else memval .&. bitMaskInverse
+                mem' = H.insert addr newmemval mem
+            put $ state {memory = mem'}
+            incPC size
+        otherwise -> fatalError
+
+incRR :: Reg16Spec -> (Int, PCState)
+incRR reg16 = (1, do
+    _adjRR reg16 (\v -> v + 1) 1 "incRR"
+ )
+
+decRR :: Reg16Spec -> (Int, PCState)
+decRR reg16 = (1, do
+    _adjRR reg16 (\v -> v - 1) 1 "decRR"
+ )
+
+_adjRR :: Reg16Spec -> (Int -> Int) -> Int -> String -> PCState
+_adjRR AF _ _ _ = fatalError
+_adjRR reg16 _op size name = do
+    lift $ putStrLn $ name ++ " " ++ show reg16
+    state <- get
+    let
+        (rh, rl) = getReg16Pair reg16
+        regs = registers state
+        hval = valueReg rh regs
+        lval = valueReg rl regs
+        rrval = to16Bit hval lval
+        newrrval = (_op rrval) .&. 0xffff
+
+        (newhval, newlval) = to2x8 newrrval
+        regs1 = modifyReg rh (const newhval) regs
+        regs2 = modifyReg rl (const newlval) regs1
+    put $ state {registers = regs2}
+    incPC size
+
+di :: (Int, PCState)
+di = (1, do
+    incPC 1
+ )
+
+incPC :: Int -> PCState
+incPC num = do
+    state <- get
+    put $ state { pc = (pc state) + num}
 
 ldrn :: Reg8Spec -> Int -> (Int, PCState)
 ldrn reg8 num = (2, do
