@@ -2,7 +2,6 @@ module Main where
 
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State
-import Control.Monad.Trans.Writer
 
 import qualified Data.HashMap as H
 
@@ -10,274 +9,270 @@ import Data.Bits
 import Data.List
 import System.IO
 
-
 pr1 = [halt]
 
 prt1 = [
-        Unlabled $ ldA 0x34,
-        Unlabled $ cpA 0x34,
-        Unlabled $ cpA 0x88,
-        Unlabled $ jpNZ (NumberValue 0x0000),
-        Unlabled $ halt
-        ]
+        ldA 0x34,
+        cpA 0x34,
+        cpA 0x88,
+        jpNZ (NumberValue 0x0000),
+        halt
+    ]
 
 pr2 = [
+        Label "START" .>    ldA 0x4F,
+                            outA 0x02,
 
-            Label "START" $     ldA 0x4F,
-            Unlabled $          outA 0x02,
+                            ldA 0x0F,
+                            outA 0x03,
+        Label "LOOP1" .>    inA 0x00,
+                            outA 0x01,
 
-            Unlabled $          ldA 0x0F,
-            Unlabled $          outA 0x03,
-            Label "LOOP1" $     inA 0x00,
-            Unlabled $          outA 0x01,
+                            cpA 0x00,
 
-            Unlabled $          cpA 0x00,
+                            jpNZ $ LabelValue "LOOP1",
 
-            Unlabled $          jpNZ $ LabelValue "LOOP1",
-
-            Unlabled $ nop,
-            Label "END" $ halt
-            ]
+                            nop,
+        Label "END" .>      halt
+    ]
 
 pr3 = [
-            Unlabled $ ldRRnn BC 0x5499,
-            Unlabled $ ldRRnn HL 0x1234,
-            Unlabled $ ldRRnn SP 0xfedc,
-            Unlabled $ ldA 0xff,
-            Unlabled $ ld_nn_A 0x3265,
-            Unlabled $ ldA 0xee,
-            Unlabled $ ld_nn_A 0x3266,
-            Unlabled $ ldA_nn_ 0x3265,
-            Unlabled $ ldA_nn_ 0x3266,
-
-            Unlabled halt
-            ]
+        ldRRnn BC 0x5499,
+        ldRRnn HL 0x1234,
+        ldRRnn SP 0xfedc,
+        ldA 0xff,
+        ld_nn_A 0x3265,
+        ldA 0xee,
+        ld_nn_A 0x3266,
+        ldA_nn_ 0x3265,
+        ldA_nn_ 0x3266,
+        halt
+    ]
 
 pr4 = [
-        Unlabled $ ldRRnn SP 0x00ff,
-        Unlabled $ ldRRnn HL 0x1234,
-        Unlabled $ push HL,
-        Unlabled $ ldRRnn HL 0x0000,
-        Unlabled $ pop DE,
-        Unlabled $ halt
+        ldRRnn SP 0x00ff,
+        ldRRnn HL 0x1234,
+        push HL,
+        ldRRnn HL 0x0000,
+        pop DE,
+        halt
     ]
 
 pr5 = [
-        Unlabled $ ldRRnn SP 0x00ff,
-        Unlabled $ call $ LabelValue "TheSub",
-        Unlabled $ nop,
-        Unlabled $ nop,
-        Unlabled $ nop,
-        Unlabled $ nop,
-        Unlabled $ halt,
+                            ldRRnn SP 0x00ff,
+                            call $ LabelValue "TheSub",
+                            nop,
+                            nop,
+                            nop,
+                            nop,
+                            halt,
 
-        Label "TheSub" $ nop,
-        Unlabled $ nop,
-        Unlabled $ nop,
-        Unlabled $ ret
+        Label "TheSub" .>   nop,
+                            nop,
+                            nop,
+                            ret
     ]
 
 pr6 = [
-        Unlabled $ ldRRnn SP 0x00ff,
-        Unlabled $ ldRRnn HL 0x1234,
-        Unlabled $ push HL,
-        Unlabled $ ldRR_nn_ DE (NumberValue 0x00fd),
-        Unlabled $ pop BC,
-        Unlabled $ halt
+        ldRRnn SP 0x00ff,
+        ldRRnn HL 0x1234,
+        push HL,
+        ldRR_nn_ DE (NumberValue 0x00fd),
+        pop BC,
+        halt
     ]
 
 pr7 = [
-        Unlabled $ ldRRnn HL 0x9876,
-        Unlabled $ ld_nn_RR (NumberValue 0x00ff) HL,
+        ldRRnn HL 0x9876,
+        ld_nn_RR (NumberValue 0x00ff) HL,
 
-        Unlabled $ ldRR_nn_ DE (NumberValue 0x00ff),
+        ldRR_nn_ DE (NumberValue 0x00ff),
 
-        Unlabled $ halt
+        halt
     ]
 
 pr8 = [
-        Unlabled $ ldRRnn HL 0x9876,
-        Unlabled $ ldrr H L,
-        Unlabled $ ldrr D L,
-        Unlabled $ halt
+        ldRRnn HL 0x9876,
+        ldrr H L,
+        ldrr D L,
+        halt
     ]
 
 pr9 = [
-        Unlabled $ ldrn D 0x81,
-        Unlabled $ ldrn A 0x80,
-        Unlabled $ halt
+        ldrn D 0x81,
+        ldrn A 0x80,
+        halt
     ]
 
 pr10 = [
-        Unlabled $ ldrn A 0x10,
-        Unlabled $ ldrn B 0x13,
-        Unlabled $ addAr B,
-        Unlabled $ addAn 0x40,
-        Unlabled $ halt
+        ldrn A 0x10,
+        ldrn B 0x13,
+        addAr B,
+        addAn 0x40,
+        halt
     ]
 
 pr11 = [
-        Unlabled $ ldrn A 0x89,
-        Unlabled $ ldRRnn HL 0x9876,
-        Unlabled $ ld_nn_RR (NumberValue 0x00ff) HL,
-        Unlabled $ ldRRnn HL 0x00ff,
-        Unlabled $ addA_HL_,
-        Unlabled $ halt
+        ldrn A 0x89,
+        ldRRnn HL 0x9876,
+        ld_nn_RR (NumberValue 0x00ff) HL,
+        ldRRnn HL 0x00ff,
+        addA_HL_,
+        halt
     ]
 
 pr12 = [
-        Unlabled $ ldrn A 0x12,
-        Unlabled $ ldrn B 0x12,
-        Unlabled $ subAr B,
-        Unlabled $ subAn 0x40,
-        Unlabled $ halt
+        ldrn A 0x12,
+        ldrn B 0x12,
+        subAr B,
+        subAn 0x40,
+        halt
     ]
 
 pr13 = [
-        Unlabled $ ldrn A 0x8a,
-        Unlabled $ ldRRnn HL 0x0011,
-        Unlabled $ ld_nn_RR (NumberValue 0x00ff) HL,
-        Unlabled $ ldRRnn HL 0x00ff,
-        Unlabled $ subA_HL_,
-        Unlabled $ halt
+        ldrn A 0x8a,
+        ldRRnn HL 0x0011,
+        ld_nn_RR (NumberValue 0x00ff) HL,
+        ldRRnn HL 0x00ff,
+        subA_HL_,
+        halt
     ]
 
 pr14 = [
-        Unlabled $ ldrn A 0xca,
-        Unlabled $ ldrn B 0x00,
-        Unlabled $ andAr B,
---        Unlabled $ andAn 0x03,
-        Unlabled $ halt
+        ldrn A 0xca,
+        ldrn B 0x00,
+        andAr B,
+        halt
     ]
 
 pr15 = [
-        Unlabled $ ldrn A 0xca,
-        Unlabled $ ldRRnn HL 0x0003,
-        Unlabled $ ld_nn_RR (NumberValue 0x00ff) HL,
-        Unlabled $ ldRRnn HL 0x00ff,
-        Unlabled $ andA_HL_,
-        Unlabled $ halt
+        ldrn A 0xca,
+        ldRRnn HL 0x0003,
+        ld_nn_RR (NumberValue 0x00ff) HL,
+        ldRRnn HL 0x00ff,
+        andA_HL_,
+        halt
     ]
 
 pr16 = [
-        Unlabled $ ldrn A 0xca,
-        Unlabled $ ldrn B 0xca,
-        Unlabled $ cpr B,
-        Unlabled $ ldrn B 0xff,
-        Unlabled $ cpr B,
-        Unlabled $ halt
+        ldrn A 0xca,
+        ldrn B 0xca,
+        cpr B,
+        ldrn B 0xff,
+        cpr B,
+        halt
     ]
 
 pr17 = [
-        Unlabled $ ldrn A 0xff,
-        Unlabled $ incr A,
+        ldrn A 0xff,
+        incr A,
 
-        Unlabled $ ldrn B 0xdd,
-        Unlabled $ decr B,
+        ldrn B 0xdd,
+        decr B,
 
-        Unlabled $ halt
+        halt
     ]
 
 pr18 = [
-        Unlabled $ ldrn A 0xca,
-        Unlabled $ ld_nn_A 0x00ff,
-        Unlabled $ ldrn A 0x00,
+        ldrn A 0xca,
+        ld_nn_A 0x00ff,
+        ldrn A 0x00,
 
-        Unlabled $ ldRRnn HL 0xff,
+        ldRRnn HL 0xff,
 
-        Unlabled $ dec_HL_,
+        dec_HL_,
 
-        Unlabled $ ldA_nn_ 0x00ff,
+        ldA_nn_ 0x00ff,
 
-        Unlabled $ halt
+        halt
     ]
 
 pr19 = [
-        Unlabled $ ldrn A 0x80,
-        Unlabled $ rrca,
-        Unlabled $ ldrn A 0x81,
-        Unlabled $ rrca,
-        Unlabled $ halt
+        ldrn A 0x80,
+        rrca,
+        ldrn A 0x81,
+        rrca,
+        halt
     ]
 
 pr20 = [
-        Unlabled $ ldrn A 0x80,
-        Unlabled $ rlca,
-        Unlabled $ ldrn A 0x81,
-        Unlabled $ rlca,
-        Unlabled $ halt
+        ldrn A 0x80,
+        rlca,
+        ldrn A 0x81,
+        rlca,
+        halt
     ]
 
 pr21 = [
-        Unlabled $ ldrn A 0x82,
-        Unlabled $ bitbr 2 A,
-        Unlabled $ bitbr 7 A,
-        Unlabled $ bitbr 6 A,
-        Unlabled $ bitbr 1 A,
-        Unlabled $ halt
+        ldrn A 0x82,
+        bitbr 2 A,
+        bitbr 7 A,
+        bitbr 6 A,
+        bitbr 1 A,
+        halt
     ]
 
 pr22 = [
-        Unlabled $ ldrn A 0x82,
-        Unlabled $ ld_nn_A 0x00ff,
-        Unlabled $ ldRRnn HL 0x00ff,
-        Unlabled $ bitb_HL_ 2,
-        Unlabled $ bitb_HL_ 7,
-        Unlabled $ bitb_HL_ 6,
-        Unlabled $ bitb_HL_ 1,
-        Unlabled $ halt
+        ldrn A 0x82,
+        ld_nn_A 0x00ff,
+        ldRRnn HL 0x00ff,
+        bitb_HL_ 2,
+        bitb_HL_ 7,
+        bitb_HL_ 6,
+        bitb_HL_ 1,
+        halt
     ]
 
 pr23 = [
-        Unlabled $ ldrn A 0x80,
-        Unlabled $ setbr 1 A,
-        Unlabled $ setbr 3 A,
-        Unlabled $ halt
+        ldrn A 0x80,
+        setbr 1 A,
+        setbr 3 A,
+        halt
     ]
 
 pr24 = [
-        Unlabled $ ldrn A 0xff,
-        Unlabled $ resbr 1 A,
-        Unlabled $ resbr 3 A,
-        Unlabled $ halt
+        ldrn A 0xff,
+        resbr 1 A,
+        resbr 3 A,
+        halt
     ]
 
 pr25 = [
-        Unlabled $ ldrn A 0x82,
-        Unlabled $ ld_nn_A 0x00ff,
-        Unlabled $ ldRRnn HL 0x00ff,
-        Unlabled $ setb_HL_ 2,
-        Unlabled $ ldA_nn_ 0x00ff,        
-        Unlabled $ setb_HL_ 7,
-        Unlabled $ ldA_nn_ 0x00ff,        
-        Unlabled $ setb_HL_ 6,
-        Unlabled $ ldA_nn_ 0x00ff,        
-        Unlabled $ setb_HL_ 0,
-        Unlabled $ ldA_nn_ 0x00ff,        
-        Unlabled $ halt
+        ldrn A 0x82,
+        ld_nn_A 0x00ff,
+        ldRRnn HL 0x00ff,
+        setb_HL_ 2,
+        ldA_nn_ 0x00ff,        
+        setb_HL_ 7,
+        ldA_nn_ 0x00ff,        
+        setb_HL_ 6,
+        ldA_nn_ 0x00ff,        
+        setb_HL_ 0,
+        ldA_nn_ 0x00ff,        
+        halt
     ]
 
 pr26 = [
-        Unlabled $ ldrn A 0xff,
-        Unlabled $ ld_nn_A 0x00ff,
-        Unlabled $ ldRRnn HL 0x00ff,
-        Unlabled $ resb_HL_ 2,
-        Unlabled $ ldA_nn_ 0x00ff,        
-        Unlabled $ resb_HL_ 7,
-        Unlabled $ ldA_nn_ 0x00ff,        
-        Unlabled $ resb_HL_ 6,
-        Unlabled $ ldA_nn_ 0x00ff,        
-        Unlabled $ resb_HL_ 0,
-        Unlabled $ ldA_nn_ 0x00ff,        
-        Unlabled $ halt
+        ldrn A 0xff,
+        ld_nn_A 0x00ff,
+        ldRRnn HL 0x00ff,
+        resb_HL_ 2,
+        ldA_nn_ 0x00ff,        
+        resb_HL_ 7,
+        ldA_nn_ 0x00ff,        
+        resb_HL_ 6,
+        ldA_nn_ 0x00ff,        
+        resb_HL_ 0,
+        ldA_nn_ 0x00ff,        
+        halt
     ]
 
 pr27 = [
-        Unlabled $ ldRRnn DE 0x00ff,
-        Unlabled $ incRR DE,
-        Unlabled $ ldRRnn DE 0x1000,
-        Unlabled $ decRR DE,
-        Unlabled $ halt
+        ldRRnn DE 0x00ff,
+        incRR DE,
+        ldRRnn DE 0x1000,
+        decRR DE,
+        halt
     ]
 
 pr' = pr27
@@ -314,24 +309,34 @@ instance Show IORegisters where
                                                 ++ "ioValueB = " ++ showHex (ioValueB iors) ++ ")"
 
 
-data ProgramData = ProgramData {ins :: [(Int, PCState)], lab :: [(String, Int)]}
+data ProgramData = ProgramData {ins :: [RawInstruction], lab :: [(String, Int)]}
 type Mem = H.Map Int Int
 data MyState = MyState { canContinue :: Bool, programData :: ProgramData, pc  :: Int, registers :: Registers, ioRegisters :: IORegisters, memory :: Mem, e :: String }
 
-data AnnotatedPCState = Label String (Int, PCState) | Unlabled (Int, PCState)
+type RawInstruction = (Int, PCState)
+data MachineInstruction = Labeled String RawInstruction | Unlabled RawInstruction
 
 data Address = LabelValue String | NumberValue Int deriving Show
 
-runMachine :: [AnnotatedPCState] -> IO ()
+data Label = Label String
+
+addLabel :: Label -> MachineInstruction -> MachineInstruction
+addLabel (Label label) (Unlabled instr) = Labeled label instr
+addLabel _ instr = instr
+
+(.>) :: Label -> MachineInstruction -> MachineInstruction
+(.>) = addLabel
+
+runMachine :: [MachineInstruction] -> IO ()
 runMachine instructions  = let
             initRegisters = Registers {areg = 0, breg = 0, creg = 0, dreg = 0, ereg = 0, freg = 0, hreg = 0, lreg = 0, spreg = 0}
             initIORegisters = IORegisters {ioControlA = 0, ioValueA = 0, ioControlB = 0, ioValueB = 0}
             initMemory = H.fromList $ zip [0..0xffff] (repeat 0)
 
-            seed :: [AnnotatedPCState] -> Int -> [(Int, PCState)] -> [(String, Int)] -> (Int, [(Int, PCState)], [(String, Int)])
+            seed :: [MachineInstruction] -> Int -> [RawInstruction] -> [(String, Int)] -> (Int, [RawInstruction], [(String, Int)])
             seed [] addr acc labelAcc  = (addr, acc, labelAcc)
             seed (Unlabled (a, i):is) addr acc labelAcc = seed is (addr+a)  ((addr, i):acc) labelAcc
-            seed (Label labelName (a, i):is) addr acc labelAcc = seed is (addr+a)  ((addr, i):acc) ((labelName, addr):labelAcc)
+            seed (Labeled labelName (a, i):is) addr acc labelAcc = seed is (addr+a)  ((addr, i):acc) ((labelName, addr):labelAcc)
 
             (topAddr, instructions', labels) = seed instructions 0 [] []
 
@@ -360,8 +365,8 @@ dodebug :: String -> PCState
 dodebug s = do
         lift $ putStrLn s
 
-debug :: String -> AnnotatedPCState -> AnnotatedPCState
-debug d (Label s (n, p)) = Label s (n, dodebug d >>  p)
+debug :: String -> MachineInstruction -> MachineInstruction
+debug d (Labeled s (n, p)) = Labeled s (n, dodebug d >>  p)
 debug d (Unlabled (n, p)) = Unlabled (n, dodebug d >> p)
 
 showHex :: Int -> String
@@ -405,16 +410,16 @@ instance Show MyState where
             "e =", e
         ]
 
-jp :: Address -> (Int, PCState)
-jp addr = (3, do
-        lift $ putStrLn ("jp " ++ show addr)
-        MyState _ i pc regs ioRegs mem e <- get
-        newPc <- decodeAddress addr
+jp :: Address -> MachineInstruction
+jp addr = Unlabled (3, do
+    lift $ putStrLn ("jp " ++ show addr)
+    MyState _ i pc regs ioRegs mem e <- get
+    newPc <- decodeAddress addr
 
-        case newPc of
-            Nothing -> fatalError
-            Just addr' -> put $ MyState True i addr' regs ioRegs mem e
-        )
+    case newPc of
+        Nothing -> fatalError
+        Just addr' -> put $ MyState True i addr' regs ioRegs mem e
+ )
 
 fatalError = do
     state <- get
@@ -426,23 +431,23 @@ decodeAddress (LabelValue label) = do
     state <- get
     return $ lookup label ((lab . programData) state)
 
-ldA :: Int -> (Int, PCState)
-ldA num = (2, do
+ldA :: Int -> MachineInstruction
+ldA num = Unlabled (2, do
         lift $ putStrLn ("ldA " ++ showHex num)
         MyState _ i pc regs ioRegs mem e <- get
         put $ MyState True i (pc + 2) (regs { areg = num}) ioRegs mem e
         )
 
-halt :: (Int, PCState)
-halt = (1, do
+halt :: MachineInstruction
+halt = Unlabled (1, do
         lift $ putStrLn "halt"
         MyState _ i pc regs ioRegs mem e <- get
         let newPc = (pc + 1)
         put $ MyState False i newPc regs ioRegs mem "HALT"
         )
 
-outA :: Int -> (Int, PCState)
-outA port = (2,
+outA :: Int -> MachineInstruction
+outA port = Unlabled (2,
         do
             lift $ putStrLn ("outA " ++ showHex port)
             state@(MyState cont i pc regs ioRegs mem e) <- get
@@ -459,8 +464,8 @@ outA port = (2,
 
     )
 
-inA :: Int -> (Int, PCState)
-inA port = (2,
+inA :: Int -> MachineInstruction
+inA port = Unlabled (2,
         do
             lift $ putStrLn ("inA " ++ showHex port)
             state@(MyState _ i pc regs ioRegs mem e) <- get
@@ -499,8 +504,8 @@ outAction 0x02 a = lift $ putStrLn ("NEW PORT CONTROL A: " ++ showHex a)
 outAction 0x03 a = lift $ putStrLn ("NEW PORT CONTROL B: " ++ showHex a)
 outAction _ _ = return ()
 
-cpA :: Int -> (Int, PCState)
-cpA val = (2,
+cpA :: Int -> MachineInstruction
+cpA val = Unlabled (2,
         do
             lift $ putStrLn ("cpA " ++ showHex val)
             state@(MyState _ i pc regs ioRegs mem e) <- get
@@ -514,8 +519,8 @@ cpA val = (2,
             put $ state {pc = newPc, registers = regs {freg = newFReg} }
     )
 
-jpNZ :: Address -> (Int, PCState)
-jpNZ addr = (2, do
+jpNZ :: Address -> MachineInstruction
+jpNZ addr = Unlabled (2, do
         lift $ putStrLn ("jpNZ " ++ show addr)
         MyState _ i pc regs ioRegs mem e <- get
 
@@ -529,8 +534,8 @@ jpNZ addr = (2, do
             put $ MyState True i (pc + 2) regs ioRegs mem e
     )
 
-jpZ :: Address -> (Int, PCState)
-jpZ addr = (2, do
+jpZ :: Address -> MachineInstruction
+jpZ addr = Unlabled (2, do
         lift $ putStrLn ("jpNZ " ++ show addr)
         MyState _ i pc regs ioRegs mem e <- get
 
@@ -544,8 +549,8 @@ jpZ addr = (2, do
             put $ MyState True i (pc + 2) regs ioRegs mem e
     )
 
-nop :: (Int, PCState)
-nop = (1, do
+nop :: MachineInstruction
+nop = Unlabled (1, do
         lift $ putStrLn "nop"
         state <- get
         put $ state {pc = pc state + 1}
@@ -557,8 +562,8 @@ data Reg16Spec = AF | BC | DE | HL | SP deriving Show
 dumpMemory :: Int -> Mem -> PCState
 dumpMemory upto mem = lift $ putStrLn $ show (take upto $ map (\(a,v) -> (showHex16 a, showHex v) )  (H.toList mem))
 
-ldRRnn :: Reg16Spec -> Int -> (Int, PCState)
-ldRRnn reg16 num = (3, do
+ldRRnn :: Reg16Spec -> Int -> MachineInstruction
+ldRRnn reg16 num = Unlabled (3, do
     lift $ putStrLn $ "ldRRnn " ++ show reg16 ++ " " ++ showHex16 num
     _ldRRnn 3 reg16 num
  )
@@ -580,8 +585,8 @@ _ldRRnn size reg16 num = do
         rlow = modifyReg rl (const low) rhigh
     put $ state {pc = pc state + size, registers = rlow}
 
-ldRR_nn_ :: Reg16Spec -> Address -> (Int, PCState)
-ldRR_nn_ reg16 addr'' = (4, do
+ldRR_nn_ :: Reg16Spec -> Address -> MachineInstruction
+ldRR_nn_ reg16 addr'' = Unlabled (4, do
     addr' <- decodeAddress addr''
     case addr' of
         Just addr -> do
@@ -599,12 +604,12 @@ ldRR_nn_ reg16 addr'' = (4, do
         otherwise -> fatalError
      )
 
-ld_nn_RR :: Address -> Reg16Spec -> (Int, PCState)
+ld_nn_RR :: Address -> Reg16Spec -> MachineInstruction
 ld_nn_RR addr HL = _ld_nn_RR addr HL 3
 ld_nn_RR addr reg16 = _ld_nn_RR addr reg16 4
 
-_ld_nn_RR :: Address -> Reg16Spec -> Int -> (Int, PCState)
-_ld_nn_RR addr'' reg16 size = (size, do
+_ld_nn_RR :: Address -> Reg16Spec -> Int -> MachineInstruction
+_ld_nn_RR addr'' reg16 size = Unlabled (size, do
     addr' <- decodeAddress addr''
     case addr' of
         Just addr -> do
@@ -624,8 +629,8 @@ _ld_nn_RR addr'' reg16 size = (size, do
         otherwise -> fatalError
  )
 
-ld_nn_A :: Int -> (Int, PCState)
-ld_nn_A loc = (3, do
+ld_nn_A :: Int -> MachineInstruction
+ld_nn_A loc = Unlabled (3, do
     lift $ putStrLn $ "ld_nn_A " ++ showHex16 loc
     state <- get
     let
@@ -635,8 +640,8 @@ ld_nn_A loc = (3, do
     put $ state {pc = pc state + 3, memory = mem'}
  )
 
-ldA_nn_ :: Int -> (Int, PCState)
-ldA_nn_ loc = (3, do
+ldA_nn_ :: Int -> MachineInstruction
+ldA_nn_ loc = Unlabled (3, do
     lift $ putStrLn $ "ldA_nn_ " ++ showHex16 loc
     state <- get
     let
@@ -648,8 +653,8 @@ ldA_nn_ loc = (3, do
         Just val' -> put $ state {pc = pc state + 3, registers = regs {areg = val'}}
  )
 
-ldrr :: Reg8Spec -> Reg8Spec -> (Int, PCState)
-ldrr r r' = (1, do
+ldrr :: Reg8Spec -> Reg8Spec -> MachineInstruction
+ldrr r r' = Unlabled (1, do
     lift $ putStrLn $ "ldrr " ++ show r ++ " " ++ show r'
     state <- get
     let
@@ -663,49 +668,49 @@ ldrr r r' = (1, do
 mop :: (Int -> Int -> Int) -> (Int -> Int -> PCState_ (Bool, Int))
 mop f = (\x y -> return $ (True, f x y))
 
-addAr :: Reg8Spec -> (Int, PCState)
+addAr :: Reg8Spec -> MachineInstruction
 addAr reg8 = _regA_Arith_Ar 1 reg8 (mop (+)) "addAr "
 
-addAn :: Int -> (Int, PCState)
+addAn :: Int -> MachineInstruction
 addAn num = _regA_Arith_An 2 num (mop (+)) "addAn "
 
-addA_HL_ :: (Int, PCState)
+addA_HL_ :: MachineInstruction
 addA_HL_ = _regA_Arith_A_HL_ 1 (mop (+)) "addA_HL_ "
 
-subAr :: Reg8Spec -> (Int, PCState)
+subAr :: Reg8Spec -> MachineInstruction
 subAr reg8 = _regA_Arith_Ar 1 reg8 (mop (-)) "subAr "
 
-subAn :: Int -> (Int, PCState)
+subAn :: Int -> MachineInstruction
 subAn num = _regA_Arith_An 2 num (mop (-)) "subAn "
 
-subA_HL_ :: (Int, PCState)
+subA_HL_ :: MachineInstruction
 subA_HL_ = _regA_Arith_A_HL_ 1 (mop (-)) "subA_HL_ "
 
-andAr :: Reg8Spec -> (Int, PCState)
+andAr :: Reg8Spec -> MachineInstruction
 andAr reg8 = _regA_Arith_Ar 1 reg8 (mop (.&.)) "andAr "
 
-andAn :: Int -> (Int, PCState)
+andAn :: Int -> MachineInstruction
 andAn num = _regA_Arith_An 2 num (mop (.&.)) "andAn "
 
-andA_HL_ :: (Int, PCState)
+andA_HL_ :: MachineInstruction
 andA_HL_ = _regA_Arith_A_HL_ 1 (mop (.&.)) "andA_HL_ "
 
-orAr :: Reg8Spec -> (Int, PCState)
+orAr :: Reg8Spec -> MachineInstruction
 orAr reg8 = _regA_Arith_Ar 1 reg8 (mop (.|.)) "orAr "
 
-orAn :: Int -> (Int, PCState)
+orAn :: Int -> MachineInstruction
 orAn num = _regA_Arith_An 2 num (mop (.|.)) "orAn "
 
-orA_HL_ :: (Int, PCState)
+orA_HL_ :: MachineInstruction
 orA_HL_ = _regA_Arith_A_HL_ 1 (mop (.|.)) "orA_HL_ "
 
-xorAr :: Reg8Spec -> (Int, PCState)
+xorAr :: Reg8Spec -> MachineInstruction
 xorAr reg8 = _regA_Arith_Ar 1 reg8 (mop xor) "xorAr "
 
-xorAn :: Int -> (Int, PCState)
+xorAn :: Int -> MachineInstruction
 xorAn num = _regA_Arith_An 2 num (mop xor) "xorAn "
 
-xorA_HL_ :: (Int, PCState)
+xorA_HL_ :: MachineInstruction
 xorA_HL_ = _regA_Arith_A_HL_ 1 (mop xor) "xorA_HL_ "
 
 cpAction :: Int -> Int -> PCState_ (Bool, Int)
@@ -713,13 +718,13 @@ cpAction r v = do
     updateZeroFlag' (r == v)
     return (False, r)
 
-cpr :: Reg8Spec -> (Int, PCState)
+cpr :: Reg8Spec -> MachineInstruction
 cpr reg8 = _regA_Arith_Ar 1 reg8 cpAction "cpr "
 
-cpn :: Int -> (Int, PCState)
+cpn :: Int -> MachineInstruction
 cpn num = _regA_Arith_An 2 num cpAction "cpAn "
 
-cp_HL_ :: (Int, PCState)
+cp_HL_ :: MachineInstruction
 cp_HL_ = _regA_Arith_A_HL_ 1 cpAction "cpA_HL "
 
 updateZeroFlag :: PCState
@@ -746,8 +751,8 @@ updateZeroFlag' cond = do
     put $ state { registers = regs' }
 
 
-_regA_Arith_Ar :: Int -> Reg8Spec -> (Int -> Int -> PCState_ (Bool, Int)) -> String -> (Int, PCState)
-_regA_Arith_Ar size reg8 _op name = (size, do
+_regA_Arith_Ar :: Int -> Reg8Spec -> (Int -> Int -> PCState_ (Bool, Int)) -> String -> MachineInstruction
+_regA_Arith_Ar size reg8 _op name = Unlabled (size, do
     lift $ putStrLn $ name ++ show reg8
     state <- get
     let
@@ -759,8 +764,8 @@ _regA_Arith_Ar size reg8 _op name = (size, do
     put $ state' { pc = (pc state') + size}
  )
 
-_regA_Arith_An :: Int -> Int -> (Int -> Int -> PCState_ (Bool, Int)) -> String -> (Int, PCState)
-_regA_Arith_An size num _op name = (size, do
+_regA_Arith_An :: Int -> Int -> (Int -> Int -> PCState_ (Bool, Int)) -> String -> MachineInstruction
+_regA_Arith_An size num _op name = Unlabled (size, do
     lift $ putStrLn $ name ++ showHex num
     modifyRegM A (`_op` num)
 
@@ -768,8 +773,8 @@ _regA_Arith_An size num _op name = (size, do
     put $ state { pc = (pc state) + size}
  )
 
-_regA_Arith_A_HL_ :: Int -> (Int -> Int -> PCState_ (Bool, Int)) -> String -> (Int, PCState)
-_regA_Arith_A_HL_ size _op name = (size, do
+_regA_Arith_A_HL_ :: Int -> (Int -> Int -> PCState_ (Bool, Int)) -> String -> MachineInstruction
+_regA_Arith_A_HL_ size _op name = Unlabled (size, do
     lift $ putStrLn $ name ++ "HL"
     state <- get
     let
@@ -789,14 +794,14 @@ _regA_Arith_A_HL_ size _op name = (size, do
         otherwise -> fatalError
  )
 
-incr :: Reg8Spec -> (Int, PCState)
+incr :: Reg8Spec -> MachineInstruction
 incr reg8 = _adjr reg8 (\v -> v + 1) "inc "
 
-decr :: Reg8Spec -> (Int, PCState)
+decr :: Reg8Spec -> MachineInstruction
 decr reg8 = _adjr reg8 (\v -> v - 1) "dec "
 
-_adjr :: Reg8Spec -> (Int -> Int) -> String -> (Int, PCState)
-_adjr reg8 adj name = (1, do
+_adjr :: Reg8Spec -> (Int -> Int) -> String -> MachineInstruction
+_adjr reg8 adj name = Unlabled (1, do
     lift $ putStrLn $ name ++ (show reg8)
     state <- get
     let
@@ -809,14 +814,14 @@ _adjr reg8 adj name = (1, do
     updateZeroFlag' ((newval .&. 0xff) == 0)
  )
 
-inc_HL_ :: (Int, PCState)
+inc_HL_ :: MachineInstruction
 inc_HL_ = _adj_HL_ (\v -> v + 1) "inc "
 
-dec_HL_ :: (Int, PCState)
+dec_HL_ :: MachineInstruction
 dec_HL_ = _adj_HL_ (\v -> v - 1) "dec "
 
-_adj_HL_ :: (Int -> Int) -> String -> (Int, PCState)
-_adj_HL_ adj name = (1, do
+_adj_HL_ :: (Int -> Int) -> String -> MachineInstruction
+_adj_HL_ adj name = Unlabled (1, do
     lift $ putStrLn $ name ++ "(HL)"
     state <- get
     let
@@ -838,8 +843,8 @@ _adj_HL_ adj name = (1, do
         otherwise -> fatalError
  )
 
-rrca :: (Int, PCState)
-rrca = (1, do
+rrca :: MachineInstruction
+rrca = Unlabled (1, do
     lift $ putStrLn "rrca"
     state <- get
     let
@@ -852,8 +857,8 @@ rrca = (1, do
     put $ state { pc = (pc state) + 1, registers = regs' }
  )
 
-rlca :: (Int, PCState)
-rlca = (1, do
+rlca :: MachineInstruction
+rlca = Unlabled (1, do
     lift $ putStrLn "rlca"
     state <- get
     let
@@ -866,8 +871,8 @@ rlca = (1, do
     put $ state { pc = (pc state) + 1, registers = regs' }
  )
 
-bitbr :: Int -> Reg8Spec -> (Int, PCState)
-bitbr bit reg8 = (2, do
+bitbr :: Int -> Reg8Spec -> MachineInstruction
+bitbr bit reg8 = Unlabled (2, do
     lift $ putStrLn $ "bitbr " ++ showHex bit ++ " " ++ show reg8
     state <- get
     let
@@ -879,8 +884,8 @@ bitbr bit reg8 = (2, do
     incPC 2
  )
 
-bitb_HL_ :: Int -> (Int, PCState)
-bitb_HL_ bit = (2, do
+bitb_HL_ :: Int -> MachineInstruction
+bitb_HL_ bit = Unlabled (2, do
     lift $ putStrLn $ "bitb_HL_ " ++ showHex bit
     state <- get
     let
@@ -902,13 +907,13 @@ bitb_HL_ bit = (2, do
         otherwise -> fatalError
  )
 
-setbr :: Int -> Reg8Spec -> (Int, PCState)
-setbr bit reg8 = (2, do
+setbr :: Int -> Reg8Spec -> MachineInstruction
+setbr bit reg8 = Unlabled (2, do
     _modifybr bit reg8 True 2 "setbr "
  )
 
-resbr :: Int -> Reg8Spec -> (Int, PCState)
-resbr bit reg8 = (2, do
+resbr :: Int -> Reg8Spec -> MachineInstruction
+resbr bit reg8 = Unlabled (2, do
     _modifybr bit reg8 False 2 "resbr "
  )
 
@@ -926,13 +931,13 @@ _modifybr bit reg8 val size name = do
     put $ state {registers = regs'}
     incPC size
 
-setb_HL_ :: Int -> (Int, PCState)
-setb_HL_ bit = (2, do
+setb_HL_ :: Int -> MachineInstruction
+setb_HL_ bit = Unlabled (2, do
     _modifyb_HL_ bit True 2 "setb_HL_ "
  )
 
-resb_HL_ :: Int -> (Int, PCState)
-resb_HL_ bit = (2, do
+resb_HL_ :: Int -> MachineInstruction
+resb_HL_ bit = Unlabled (2, do
     _modifyb_HL_ bit False 2 "resb_HL_ "
  )
 
@@ -961,13 +966,13 @@ _modifyb_HL_ bit val size name = do
             incPC size
         otherwise -> fatalError
 
-incRR :: Reg16Spec -> (Int, PCState)
-incRR reg16 = (1, do
+incRR :: Reg16Spec -> MachineInstruction
+incRR reg16 = Unlabled (1, do
     _adjRR reg16 (\v -> v + 1) 1 "incRR"
  )
 
-decRR :: Reg16Spec -> (Int, PCState)
-decRR reg16 = (1, do
+decRR :: Reg16Spec -> MachineInstruction
+decRR reg16 = Unlabled (1, do
     _adjRR reg16 (\v -> v - 1) 1 "decRR"
  )
 
@@ -990,8 +995,8 @@ _adjRR reg16 _op size name = do
     put $ state {registers = regs2}
     incPC size
 
-di :: (Int, PCState)
-di = (1, do
+di :: MachineInstruction
+di = Unlabled (1, do
     incPC 1
  )
 
@@ -1000,8 +1005,8 @@ incPC num = do
     state <- get
     put $ state { pc = (pc state) + num}
 
-ldrn :: Reg8Spec -> Int -> (Int, PCState)
-ldrn reg8 num = (2, do
+ldrn :: Reg8Spec -> Int -> MachineInstruction
+ldrn reg8 num = Unlabled (2, do
     lift $ putStrLn $ "ldrn " ++ show reg8 ++ " " ++ showHex num
     state <- get
     let
@@ -1010,8 +1015,8 @@ ldrn reg8 num = (2, do
     put $ state { pc = (pc state) + 2, registers = regs' }
  )
 
-push :: Reg16Spec -> (Int, PCState)
-push reg16 = (1, do
+push :: Reg16Spec -> MachineInstruction
+push reg16 = Unlabled (1, do
     lift $ putStrLn $ "push " ++ show reg16
     state <- get
     let
@@ -1024,8 +1029,8 @@ push reg16 = (1, do
     put $ state' {pc = (pc state') + 1}
  )
 
-pop :: Reg16Spec -> (Int, PCState)
-pop reg16 = (1, do
+pop :: Reg16Spec -> MachineInstruction
+pop reg16 = Unlabled (1, do
     lift $ putStrLn $ "pop " ++ show reg16
 
     state <- get
@@ -1069,8 +1074,8 @@ _pushValue (hval, lval) = do
         mem2 = H.insert (sp - 1) hval mem1
     put $ state {registers = regs {spreg = sp - 2}, memory = mem2}
 
-call :: Address -> (Int, PCState)
-call addr = (3, do
+call :: Address -> MachineInstruction
+call addr = Unlabled (3, do
     lift $ putStrLn $ "call " ++ show addr
     newPc' <- decodeAddress addr
 
@@ -1083,8 +1088,8 @@ call addr = (3, do
         otherwise -> fatalError
  )
 
-ret :: (Int, PCState)
-ret = (1, do
+ret :: MachineInstruction
+ret = Unlabled (1, do
     lift $ putStrLn "ret"
     val <- _popValue
     case val of
