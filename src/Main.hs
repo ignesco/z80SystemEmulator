@@ -8,6 +8,8 @@ import qualified Data.HashMap as H
 import Data.Bits
 import Data.List
 import System.IO
+import System.Directory
+import System.FilePath
 
 pr1 = [halt]
 
@@ -21,12 +23,12 @@ prt1 = [
 
 pr2 = [
         Label "START" .>    ldA 0x4F,
-                            outA 0x02,
+                            out_n_A 0x02,
 
                             ldA 0x0F,
-                            outA 0x03,
-        Label "LOOP1" .>    inA 0x00,
-                            outA 0x01,
+                            out_n_A 0x03,
+        Label "LOOP1" .>    inA_n_ 0x00,
+                            out_n_A 0x01,
 
                             cpA 0x00,
 
@@ -275,12 +277,24 @@ pr27 = [
         halt
     ]
 
-pr' = pr27
+pr28 = [
+        scf,
+        ccf,
+        ccf,
+        scf,
+        ccf,
+        ccf,
+        halt
+    ]
+
+pr' = pr2
 
 -- =============================================== --
 
 flagMask_Z = 0x01
 flagMask_INVERSEZ = 0xfe
+flagMask_CY = 0x02
+flagMask_INVERSECY = 0xfd
 
 type PCState = StateT MyState IO ()
 type PCState_ = StateT MyState IO
@@ -311,7 +325,7 @@ instance Show IORegisters where
 
 data ProgramData = ProgramData {ins :: [RawInstruction], lab :: [(String, Int)]}
 type Mem = H.Map Int Int
-data MyState = MyState { canContinue :: Bool, programData :: ProgramData, pc  :: Int, registers :: Registers, ioRegisters :: IORegisters, memory :: Mem, e :: String }
+data MyState = MyState { canContinue :: Bool, programData :: ProgramData, pc  :: Int, registers :: Registers, ioRegisters :: IORegisters, memory :: Mem, portBaseDirectory :: String, e :: String }
 
 type RawInstruction = (Int, PCState)
 data MachineInstruction = Labeled String RawInstruction | Unlabled RawInstruction
@@ -340,7 +354,7 @@ runMachine instructions  = let
 
             (topAddr, instructions', labels) = seed instructions 0 [] []
 
-            initState = MyState True (ProgramData instructions' labels) 0 initRegisters initIORegisters initMemory ""
+            initState = MyState True (ProgramData instructions' labels) 0 initRegisters initIORegisters initMemory "portDir" ""
 
         in do
             putStrLn $ "top address:" ++ showHex16 topAddr
@@ -351,7 +365,7 @@ runMachine instructions  = let
 
 runMe :: PCState
 runMe = do
-    MyState _ instructions pc regs ioRegs mem e <- get
+    MyState _ instructions pc _ _ _ _ _ <- get
     let nextInstruction' = lookup pc (ins instructions)
     case nextInstruction' of
         Nothing -> return ()
@@ -402,7 +416,7 @@ JP LOOP1;
     runMachine pr'
 
 instance Show MyState where
-    show (MyState cont i pc regs ioRegs mem e) = concat $ intersperse " " $ [
+    show (MyState cont i pc regs ioRegs mem dir e) = concat $ intersperse " " $ [
             "canContinue =", show cont,
             "pc =", showHex16 pc,
             "registers =", show regs,
@@ -413,12 +427,12 @@ instance Show MyState where
 jp :: Address -> MachineInstruction
 jp addr = Unlabled (3, do
     lift $ putStrLn ("jp " ++ show addr)
-    MyState _ i pc regs ioRegs mem e <- get
+    MyState _ i pc regs ioRegs mem dir e <- get
     newPc <- decodeAddress addr
 
     case newPc of
         Nothing -> fatalError
-        Just addr' -> put $ MyState True i addr' regs ioRegs mem e
+        Just addr' -> put $ MyState True i addr' regs ioRegs mem dir e
  )
 
 fatalError = do
@@ -434,55 +448,83 @@ decodeAddress (LabelValue label) = do
 ldA :: Int -> MachineInstruction
 ldA num = Unlabled (2, do
         lift $ putStrLn ("ldA " ++ showHex num)
-        MyState _ i pc regs ioRegs mem e <- get
-        put $ MyState True i (pc + 2) (regs { areg = num}) ioRegs mem e
+        MyState _ i pc regs ioRegs mem dir e <- get
+        put $ MyState True i (pc + 2) (regs { areg = num}) ioRegs mem dir e
         )
 
 halt :: MachineInstruction
 halt = Unlabled (1, do
         lift $ putStrLn "halt"
-        MyState _ i pc regs ioRegs mem e <- get
+        MyState _ i pc regs ioRegs mem dir e <- get
         let newPc = (pc + 1)
-        put $ MyState False i newPc regs ioRegs mem "HALT"
+        put $ MyState False i newPc regs ioRegs mem dir "HALT"
         )
 
-outA :: Int -> MachineInstruction
-outA port = Unlabled (2,
+out_n_A :: Int -> MachineInstruction
+out_n_A port = Unlabled (2,
         do
-            lift $ putStrLn ("outA " ++ showHex port)
-            state@(MyState cont i pc regs ioRegs mem e) <- get
+            lift $ putStrLn ("out_n_A " ++ showHex port)
+            state@(MyState cont i pc regs ioRegs mem dir e) <- get
 
             let
                 newPc = (pc + 2)
                 res = outState port regs ioRegs
 
             case res of
-                Nothing -> put $ MyState False i newPc regs ioRegs mem "ERROR"
+                Nothing -> fatalError
                 Just (regs', ioRegs') -> do
-                    put $ MyState True i newPc regs' ioRegs' mem e
+                    put $ MyState True i newPc regs' ioRegs' mem dir e
                     outAction port (areg regs')
 
     )
 
-inA :: Int -> MachineInstruction
-inA port = Unlabled (2,
-        do
-            lift $ putStrLn ("inA " ++ showHex port)
-            state@(MyState _ i pc regs ioRegs mem e) <- get
-            res <- inAction port regs ioRegs
+inA_n_ :: Int -> MachineInstruction
+inA_n_ port = Unlabled (2, do
+    lift $ putStrLn ("inA_n_ " ++ showHex port)
+    state <- get
+    let
+        regs = registers state
+        ioRegs = ioRegisters state
 
-            case res of
-                Nothing -> put $ MyState False i pc regs ioRegs mem "ERROR"
-                Just (regs', inValue, ioRegs') -> put $ MyState True i (pc + 2) (regs {areg = inValue} ) ioRegs' mem e
-    )
+    case (port, ioControlA ioRegs) of
+        (0x00, 0x4f) -> do
+            --lift $ putStr "Please enter a value for port 0x00:"
+            --lift $ hFlush stdout
+            ---newVal <- lift (readLn :: IO Int)
+            newVal <- inPortValue port
+            put $ state {registers = regs {areg = newVal}, ioRegisters = ioRegs {ioValueA = newVal} }
+            incPC 2
+        otherwise -> fatalError
+ )
 
-inAction 0x00 regs ioRegs | ioControlA ioRegs == 0x4f = do
-    lift $ putStr "Please enter a value for port 0x00:"
-    lift $ hFlush stdout
-    newVal <- lift (readLn :: IO Int)
-    return $ Just (regs, newVal, ioRegs { ioValueA = newVal } )
+inPortValue :: Int -> PCState_ Int
+inPortValue port = do
+    state <- get
+    let
+        portBaseDir = portBaseDirectory state
+    lift $ inPortValue' port portBaseDir
 
-inAction  _ _ _ = return Nothing
+inPortValue' :: Int -> FilePath -> IO Int
+inPortValue' port portBaseDir = do
+    b0 <- doesFileExist $ portBaseDir </> show port </> "0"
+    b1 <- doesFileExist $ portBaseDir </> show port </> "1"
+    b2 <- doesFileExist $ portBaseDir </> show port </> "2"
+    b3 <- doesFileExist $ portBaseDir </> show port </> "3"
+    b4 <- doesFileExist $ portBaseDir </> show port </> "4"
+    b5 <- doesFileExist $ portBaseDir </> show port </> "5"
+    b6 <- doesFileExist $ portBaseDir </> show port </> "6"
+    b7 <- doesFileExist $ portBaseDir </> show port </> "7"
+    let
+        val =
+            (if b0 then 0x01 else 0)
+            .|. (if b1 then 0x02 else 0)
+            .|. (if b2 then 0x04 else 0)
+            .|. (if b3 then 0x08 else 0)
+            .|. (if b4 then 0x10 else 0)
+            .|. (if b5 then 0x20 else 0)
+            .|. (if b6 then 0x40 else 0)
+            .|. (if b7 then 0x80 else 0)
+    return val
 
 {-
 00 is val a
@@ -508,7 +550,7 @@ cpA :: Int -> MachineInstruction
 cpA val = Unlabled (2,
         do
             lift $ putStrLn ("cpA " ++ showHex val)
-            state@(MyState _ i pc regs ioRegs mem e) <- get
+            state@(MyState _ i pc regs _ _ _ _) <- get
 
             let
                 newPc = (pc + 2)
@@ -522,31 +564,31 @@ cpA val = Unlabled (2,
 jpNZ :: Address -> MachineInstruction
 jpNZ addr = Unlabled (2, do
         lift $ putStrLn ("jpNZ " ++ show addr)
-        MyState _ i pc regs ioRegs mem e <- get
+        MyState _ i pc regs ioRegs mem dir e <- get
 
         if freg regs .&. flagMask_Z == 0
           then do
             newPc <- decodeAddress addr
             case newPc of
                 Nothing -> fatalError
-                Just addr' -> put $ MyState True i addr' regs ioRegs mem e
+                Just addr' -> put $ MyState True i addr' regs ioRegs mem dir e
           else
-            put $ MyState True i (pc + 2) regs ioRegs mem e
+            put $ MyState True i (pc + 2) regs ioRegs mem dir e
     )
 
 jpZ :: Address -> MachineInstruction
 jpZ addr = Unlabled (2, do
         lift $ putStrLn ("jpNZ " ++ show addr)
-        MyState _ i pc regs ioRegs mem e <- get
+        MyState _ i pc regs ioRegs mem dir e <- get
 
         if freg regs .&. flagMask_Z == flagMask_Z
           then do
             newPc <- decodeAddress addr
             case newPc of
                 Nothing -> fatalError
-                Just addr' -> put $ MyState True i addr' regs ioRegs mem e
+                Just addr' -> put $ MyState True i addr' regs ioRegs mem dir e
           else
-            put $ MyState True i (pc + 2) regs ioRegs mem e
+            put $ MyState True i (pc + 2) regs ioRegs mem dir e
     )
 
 nop :: MachineInstruction
@@ -1097,6 +1139,30 @@ ret = Unlabled (1, do
             state <- get
             put $ state {pc = to16Bit high low}
         otherwise -> fatalError
+ )
+
+scf :: MachineInstruction
+scf = Unlabled (1, do
+    lift $ putStrLn "scf"
+    state <- get
+    let
+        regs = registers state
+        regs' = regs {freg = (freg regs) .|. flagMask_CY}
+
+    put $ state {registers = regs'}
+    incPC 1
+ )
+
+ccf :: MachineInstruction
+ccf = Unlabled (1, do
+    lift $ putStrLn "ccf"
+    state <- get
+    let
+        regs = registers state
+        regs' = regs {freg = (freg regs) `xor` flagMask_CY}
+
+    put $ state {registers = regs'}
+    incPC 1
  )
 
 modifyReg :: Reg8Spec -> (Int -> Int) -> Registers -> Registers
