@@ -14,7 +14,7 @@ import System.FilePath
 pr1 = [halt]
 
 prt1 = [
-        ldA 0x34,
+        ldAn 0x34,
         cpA 0x34,
         cpA 0x88,
         jpNZ (NumberValue 0x0000),
@@ -22,10 +22,10 @@ prt1 = [
     ]
 
 pr2 = [
-        Label "START" .>    ldA 0x4F,
+        Label "START" .>    ldAn 0x4F,
                             out_n_A 0x02,
 
-                            ldA 0x0F,
+                            ldAn 0x0F,
                             out_n_A 0x03,
         Label "LOOP1" .>    inA_n_ 0x00,
                             out_n_A 0x01,
@@ -42,9 +42,9 @@ pr3 = [
         ldRRnn BC 0x5499,
         ldRRnn HL 0x1234,
         ldRRnn SP 0xfedc,
-        ldA 0xff,
+        ldAn 0xff,
         ld_nn_A 0x3265,
-        ldA 0xee,
+        ldAn 0xee,
         ld_nn_A 0x3266,
         ldA_nn_ 0x3265,
         ldA_nn_ 0x3266,
@@ -287,7 +287,94 @@ pr28 = [
         halt
     ]
 
-pr' = pr2
+bootmonitor = [
+                            di,
+                            ldRRnn SP 0x0100,
+                            call $ LabelValue "SETUPIO",
+
+                            call $ LabelValue "READBYTE",
+
+                            halt,
+
+        Label "READBYTE" .>         ldrn D 0x00,
+                                    ldRRnn BC 0x0800,
+        Label "READBYTE_LOOP" .>    (call $ LabelValue "READBIT"),
+                                    call $ LabelValue "ROTL_C",
+                                    orAr D,
+                                    ldrr D A,
+                                    incr C,
+                                    ldrr A B,
+                                    decr B,
+                                    decr A,
+                                    jpNZ $ LabelValue "READBYTE_LOOP",
+
+                            
+                                    ret,
+
+        Label "READBIT" .>  call (LabelValue "WAITFOR_CLOCK_HIGH"),
+                            call $ LabelValue "WAITFOR_CLOCK_LOW",
+                            inA_n_ 0x00, -- clock is now low, so data is valid
+                            andAn 0x01,
+                            ret,
+
+        Label "WAITFOR_CLOCK_HIGH" .>   inA_n_ 0x00,
+                                        andAn 0x02,
+                                        cpA 0x00,
+                                        jpZ $ LabelValue "WAITFOR_CLOCK_HIGH",
+                                        ret,
+
+        Label "WAITFOR_CLOCK_LOW" .>    inA_n_ 0x00,
+                                        andAn 0x02,
+                                        cpA 0x02,
+                                        jpZ $ LabelValue "WAITFOR_CLOCK_LOW",
+                                        ret,
+
+
+        Label "SETUPIO" .>      ldAn 0x4F,  -- port A input
+                                out_n_A 0x02,
+                                ldAn 0x0F,  -- port B output
+                                out_n_A 0x03,
+                                ret,
+
+
+
+        Label "ROTL_C" .>       push BC,
+                                push HL,
+
+        Label "ROTL_C_LOOP" .>  ldrr L A,
+                                ldrr A C,
+                                cpA 0x00, -- have we finished rotating?
+                                jpZ $ LabelValue "RETROTL_C",
+                                ldrr A L,
+                                call $ LabelValue "SAFEROTL",
+                                decr C,
+                                jp $ LabelValue "ROTL_C_LOOP",
+
+        Label "RETROTL_C" .>    ldrr A L,
+                                pop HL,
+                                pop BC,
+                                ret,
+
+        Label "SAFEROTL" .>     push AF,   -- save a register
+                                andAn 0x80,
+                                cpA 0x80,
+                                jpZ $ LabelValue "SAFEROTL_Z",
+
+                                -- The 7th bit of a is not set so reset the carry flag before rotl
+                                pop AF,
+                                scf,
+                                ccf,
+                                rlca,
+                                ret,
+            
+                                -- The 7th bit of a is set so set the carry flag before rotl
+        Label "SAFEROTL_Z" .>   pop AF,
+                                scf,
+                                rlca,
+                                ret
+    ]
+
+pr' = bootmonitor
 
 -- =============================================== --
 
@@ -445,9 +532,9 @@ decodeAddress (LabelValue label) = do
     state <- get
     return $ lookup label ((lab . programData) state)
 
-ldA :: Int -> MachineInstruction
-ldA num = Unlabled (2, do
-        lift $ putStrLn ("ldA " ++ showHex num)
+ldAn :: Int -> MachineInstruction
+ldAn num = Unlabled (2, do
+        lift $ putStrLn ("ldAn " ++ showHex num)
         MyState _ i pc regs ioRegs mem dir e <- get
         put $ MyState True i (pc + 2) (regs { areg = num}) ioRegs mem dir e
         )
@@ -812,7 +899,7 @@ _regA_Arith_An size num _op name = Unlabled (size, do
     modifyRegM A (`_op` num)
 
     state <- get
-    put $ state { pc = (pc state) + size}
+    incPC size
  )
 
 _regA_Arith_A_HL_ :: Int -> (Int -> Int -> PCState_ (Bool, Int)) -> String -> MachineInstruction
@@ -1039,6 +1126,7 @@ _adjRR reg16 _op size name = do
 
 di :: MachineInstruction
 di = Unlabled (1, do
+    lift $ putStrLn "di"
     incPC 1
  )
 
@@ -1075,19 +1163,21 @@ pop :: Reg16Spec -> MachineInstruction
 pop reg16 = Unlabled (1, do
     lift $ putStrLn $ "pop " ++ show reg16
 
-    state <- get
+    state' <- get
     let
         (high, low) = getReg16Pair reg16
-        regs = registers state
+        regs = registers state'
 
     vals <- _popValue    
     case vals of
         Just (memhval,memlval) -> do
+            state <- get
             let
                 regs1 = modifyReg high (const memhval) regs
                 regs2 = modifyReg low (const memlval) regs1
-            put $ state {pc = (pc state) + 1, registers = regs2}
-        otherwise -> put $ state {canContinue = False, e = "ERROR"}
+                regs3 = regs2 {spreg = (spreg regs2) + 2}
+            put $ state {pc = (pc state) + 1, registers = regs3}
+        otherwise -> fatalError
  )
 
 _popValue :: PCState_ (Maybe (Int, Int))
